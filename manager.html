@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0C1311">
+<title>مدير الجرس</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0C1311; --bar:#0A100E; --surface:#141D19; --surface-alt:#13211B;
+    --border:#22302A; --border-dim:#24332E; --border-green:#2B5C46;
+    --text:#EAF2EE; --mid:#C6D6CE; --dim:#8CA298;
+    --green:#3ECF9A; --green-ink:#06120D; --amber:#E8A33D; --red:#E5817A;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin:0; height:100%; }
+  body {
+    font-family:'IBM Plex Sans Arabic', system-ui, sans-serif;
+    background:var(--bg); color:var(--text);
+    max-width:480px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column;
+  }
+  .mono { font-family:'IBM Plex Mono', monospace; font-variant-numeric:tabular-nums; }
+  .logo { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:11px; background:var(--green); color:var(--green-ink); font-weight:700; font-size:18px; }
+  .topbar { display:flex; align-items:center; gap:10px; padding:16px 20px 8px; }
+  .topbar .sub { font-size:12px; color:var(--dim); }
+  .content { flex:1; overflow-y:auto; padding:8px 20px 20px; display:flex; flex-direction:column; gap:14px; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:20px; padding:18px; }
+  .row { display:flex; align-items:center; gap:12px; }
+  .muted { color:var(--dim); font-size:13px; }
+  h2 { font-size:15px; color:var(--dim); font-weight:500; margin:0 0 4px; }
+  /* Ring */
+  .ring { width:104px; height:104px; border-radius:50%; display:grid; place-items:center; flex:none; }
+  .ring > div { width:84px; height:84px; border-radius:50%; background:var(--surface); display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .ring .big { font-size:24px; font-weight:600; }
+  /* Buttons */
+  button { font-family:inherit; cursor:pointer; border:0; }
+  .btn-primary { flex:1; height:64px; border-radius:18px; background:var(--green); color:var(--green-ink); font-size:16px; font-weight:600; }
+  .btn-tonal { flex:1; height:64px; border-radius:18px; background:var(--surface-alt); border:1px solid var(--border-green); color:#9FD8C1; font-size:16px; font-weight:600; }
+  .btn-ghost { height:52px; border-radius:16px; background:var(--surface); border:1px solid var(--border-dim); color:var(--mid); font-size:15px; width:100%; }
+  .btn-send { height:52px; border-radius:16px; background:var(--green); color:var(--green-ink); font-size:17px; font-weight:600; width:100%; }
+  .pill { padding:9px 0; border-radius:999px; background:var(--surface); border:1px solid var(--border-dim); color:var(--dim); font-size:14px; text-align:center; flex:1; }
+  .pill.active { background:var(--surface-alt); border-color:var(--border-green); color:var(--green); }
+  textarea, input { width:100%; font-family:inherit; background:var(--surface); border:1px solid var(--border-dim); border-radius:12px; color:var(--text); padding:12px 14px; font-size:16px; line-height:1.7; }
+  textarea:focus, input:focus { outline:none; border-color:var(--border-green); }
+  .evt { display:flex; align-items:center; gap:12px; background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:13px 15px; }
+  .evt.now { background:var(--surface-alt); border-color:var(--border-green); }
+  .evt .t { font-size:17px; font-weight:600; width:56px; }
+  .tag-green { color:var(--green); font-size:13px; }
+  .tag-amber { color:var(--amber); font-size:13px; }
+  .tag-dim { color:var(--dim); font-size:13px; }
+  .chip { padding:9px 14px; border-radius:12px; background:var(--surface-alt); font-size:14px; color:var(--mid); border:1px solid var(--border-dim); }
+  /* Bottom nav */
+  .nav { display:flex; padding:8px 12px calc(16px + env(safe-area-inset-bottom)); gap:4px; background:var(--bar); border-top:1px solid var(--border); }
+  .nav button { flex:1; background:none; color:var(--dim); font-size:12px; padding:10px 0; border-radius:12px; }
+  .nav button.active { color:var(--green); font-weight:600; }
+  .msg { padding:11px 14px; border-radius:12px; font-size:14px; display:none; }
+  .msg.ok { background:var(--surface-alt); color:var(--green); display:block; }
+  .msg.err { background:#2A1512; color:var(--red); display:block; }
+  /* Login */
+  #login { flex:1; display:flex; flex-direction:column; justify-content:center; gap:12px; padding:0 24px; }
+  #login .logo { width:48px; height:48px; font-size:24px; border-radius:14px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+
+<!-- Login -->
+<div id="login">
+  <span class="logo">ج</span>
+  <h1 style="font-size:22px; margin:6px 0 2px;">مدير الجرس المدرسي</h1>
+  <p class="muted" style="margin:0 0 10px;">متابعة وتحكم عن بُعد من جوالك</p>
+  <input id="email" type="email" placeholder="البريد الإلكتروني" dir="ltr" autocomplete="username">
+  <input id="password" type="password" placeholder="كلمة المرور" dir="ltr" autocomplete="current-password">
+  <button class="btn-send" onclick="login()">دخول</button>
+  <div class="msg" id="loginMsg"></div>
+</div>
+
+<!-- App -->
+<div id="app" hidden style="flex:1; display:flex; flex-direction:column; min-height:0;">
+  <div class="topbar">
+    <span class="logo">ج</span>
+    <div style="flex:1; display:flex; flex-direction:column;">
+      <span style="font-size:16px; font-weight:600;" id="schoolName">—</span>
+      <span class="sub" id="todayLine">—</span>
+    </div>
+    <button class="btn-ghost" style="width:auto; height:38px; padding:0 14px; font-size:13px;" onclick="logout()">خروج</button>
+  </div>
+  <div class="content" id="content"></div>
+
+  <div class="nav">
+    <button data-tab="home" class="active" onclick="showTab('home')">الرئيسية</button>
+    <button data-tab="announce" onclick="showTab('announce')">النداء</button>
+    <button data-tab="schedules" onclick="showTab('schedules')">الجداول</button>
+    <button data-tab="log" onclick="showTab('log')">السجل</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
+<script>
+const SUPABASE_URL = "https://tcdknoalnynnbuvlozwy.supabase.co";
+const SUPABASE_KEY = "sb_publishable_D0YQfRkraujKgNEVpSNKhw_YMvm2oB7";
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const DAY_MS = 86400000;
+let schoolId = null, config = { schedules: [] }, configVersion = 0, tab = "home";
+let logs = [], commands = [];
+
+// ─── Auth ───────────────────────────────────────────────────────────────────
+async function login() {
+  const { error } = await db.auth.signInWithPassword({
+    email: document.getElementById("email").value.trim(),
+    password: document.getElementById("password").value,
+  });
+  if (error) return show("loginMsg", "فشل الدخول: " + error.message, true);
+  init();
+}
+async function logout() { await db.auth.signOut(); location.reload(); }
+
+async function init() {
+  const { data: { session } } = await db.auth.getSession();
+  if (!session) return;
+  const { data: m } = await db.from("school_users").select("school_id").maybeSingle();
+  if (!m) return show("loginMsg", "الحساب غير مرتبط بمدرسة.", true);
+  schoolId = m.school_id;
+  document.getElementById("login").hidden = true;
+  document.getElementById("app").hidden = false;
+  await refresh();
+  showTab("home");
+}
+
+async function refresh() {
+  const [{ data: school }, { data: cfg }, { data: lg }, { data: cmd }] = await Promise.all([
+    db.from("schools").select("name").maybeSingle(),
+    db.from("school_configs").select("version, payload").maybeSingle(),
+    db.from("device_logs").select("event_name, planned_at, executed_at, status").order("planned_at", { ascending: false }).limit(60),
+    db.from("commands").select("type, payload, created_at, delivered_at").order("id", { ascending: false }).limit(15),
+  ]);
+  document.getElementById("schoolName").textContent = school?.name || "—";
+  configVersion = cfg?.version || 0;
+  config = cfg?.payload && Array.isArray(cfg.payload.schedules) ? cfg.payload : { schedules: [] };
+  logs = lg || []; commands = cmd || [];
+  const now = new Date();
+  const fmt = new Intl.DateTimeFormat("ar", { weekday: "long", day: "numeric", month: "long" });
+  const active = config.schedules.find(s => s.isActive);
+  document.getElementById("todayLine").textContent = fmt.format(now) + (active ? " · " + active.name : "");
+}
+
+// ─── Schedule maths (mirrors the app) ───────────────────────────────────────
+function activeEvents() {
+  const s = config.schedules.find(x => x.isActive) || config.schedules[0];
+  if (!s) return [];
+  const isoDow = ((new Date().getDay() + 6) % 7); // 0=Mon..6=Sun
+  return (s.events || [])
+    .filter(e => e.enabled !== false && (e.daysOfWeek & (1 << isoDow)))
+    .sort((a, b) => a.startMinuteOfDay - b.startMinuteOfDay);
+}
+function nowMin() { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); }
+function hhmm(min) { return String(Math.floor(min / 60)).padStart(2, "0") + ":" + String(min % 60).padStart(2, "0"); }
+function logStatusFor(name) {
+  const l = logs.find(x => x.event_name === name);
+  return l ? l.status : null;
+}
+
+// ─── Tabs ───────────────────────────────────────────────────────────────────
+function showTab(name) {
+  tab = name;
+  document.querySelectorAll(".nav button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  const c = document.getElementById("content");
+  c.scrollTop = 0;
+  if (name === "home") c.innerHTML = renderHome();
+  else if (name === "announce") { c.innerHTML = renderAnnounce(); }
+  else if (name === "schedules") c.innerHTML = renderSchedules();
+  else if (name === "log") c.innerHTML = renderLog();
+}
+
+function renderHome() {
+  const evs = activeEvents();
+  const nm = nowMin();
+  let curIdx = -1;
+  for (let i = 0; i < evs.length; i++) {
+    const end = evs[i].durationMin ? evs[i].startMinuteOfDay + evs[i].durationMin
+      : (evs[i + 1]?.startMinuteOfDay ?? evs[i].startMinuteOfDay + 45);
+    if (nm >= evs[i].startMinuteOfDay && nm < end) { curIdx = i; }
+  }
+  const cur = evs[curIdx];
+  let ring = "", curName = "لا حصة جارية", curSub = "";
+  if (cur) {
+    const end = cur.durationMin ? cur.startMinuteOfDay + cur.durationMin : (evs[curIdx + 1]?.startMinuteOfDay ?? cur.startMinuteOfDay + 45);
+    const total = end - cur.startMinuteOfDay, elapsed = nm - cur.startMinuteOfDay;
+    const deg = Math.max(0, Math.min(360, 360 * (1 - elapsed / total)));
+    const rem = end - nm;
+    ring = `background:conic-gradient(var(--green) 0deg ${deg}deg, var(--border) ${deg}deg 360deg);`;
+    curName = cur.name; curSub = `متبقٍ ${rem} د`;
+  } else {
+    ring = "background:var(--border);";
+    const next = evs.find(e => e.startMinuteOfDay > nm);
+    curSub = next ? `التالي: ${next.name} · ${hhmm(next.startMinuteOfDay)}` : "انتهى اليوم";
+  }
+  const rows = evs.map(e => {
+    const st = logStatusFor(e.name);
+    const isNow = e === cur;
+    let tag = `<span class="tag-dim">قادم</span>`;
+    if (isNow) tag = `<span class="tag-green">جارية</span>`;
+    else if (st === "EXECUTED") tag = `<span class="tag-green">نُفّذ</span>`;
+    else if (st === "SILENCED") tag = `<span class="tag-amber">إسكات</span>`;
+    else if (e.startMinuteOfDay < nm) tag = `<span class="tag-dim">فات</span>`;
+    return `<div class="evt${isNow ? " now" : ""}"><span class="t mono">${hhmm(e.startMinuteOfDay)}</span><span style="flex:1; font-size:15px;">${esc(e.name)}</span>${tag}</div>`;
+  }).join("");
+  return `
+    <div class="card row" style="gap:18px;">
+      <div class="ring" style="${ring}"><div><span class="big mono">${cur ? hhmm(evs[curIdx].durationMin ? (evs[curIdx].startMinuteOfDay + evs[curIdx].durationMin - nm) : 45).replace(/^0/, "") : "—"}</span><span class="muted" style="font-size:11px;">المتبقي</span></div></div>
+      <div style="display:flex; flex-direction:column; gap:5px;">
+        <span class="muted">الحصة الجارية</span>
+        <span style="font-size:22px; font-weight:600;">${esc(curName)}</span>
+        <span class="tag-green">${esc(curSub)}</span>
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn-primary" onclick="sendBell()">الجرس الآن</button>
+      <button class="btn-tonal" onclick="showTab('announce')">نداء</button>
+    </div>
+    <div class="msg" id="msg"></div>
+    <span class="muted">مسار اليوم</span>
+    <div style="display:flex; flex-direction:column; gap:8px;">${rows || '<span class="muted">لا أحداث اليوم</span>'}</div>
+  `;
+}
+
+function renderAnnounce() {
+  return `
+    <div class="card" style="display:flex; flex-direction:column; gap:10px;">
+      <h2>نص النداء</h2>
+      <textarea id="annText" rows="3" placeholder="يُنطق بالصوت العربي على مكبرات المدرسة…"></textarea>
+      <div class="row" id="delayRow" style="gap:8px;">
+        <span class="pill active" data-d="0" onclick="pickDelay(this)">الآن</span>
+        <span class="pill" data-d="5" onclick="pickDelay(this)">5 د</span>
+        <span class="pill" data-d="15" onclick="pickDelay(this)">15 د</span>
+      </div>
+      <button class="btn-send" onclick="sendAnnounce()">إرسال النداء</button>
+    </div>
+    <div class="card" style="display:flex; flex-direction:column; gap:10px;">
+      <h2>قوالب جاهزة</h2>
+      <div style="display:flex; flex-wrap:wrap; gap:8px;">
+        ${["اصطفاف الطابور","انصراف مبكر","اجتماع معلمين","تنبيه إخلاء"].map(t =>
+          `<span class="chip" onclick="fillTpl('${t}')">${t}</span>`).join("")}
+      </div>
+    </div>
+    <div class="card" style="display:flex; flex-direction:column; gap:8px;">
+      <h2>آخر الأوامر</h2>
+      ${commands.length ? commands.map(c => {
+        const label = c.type === "bell" ? "🔔 جرس فوري" : "📢 " + esc(c.payload?.text || "نداء");
+        const st = c.delivered_at ? `<span class="tag-green">وصل ✓</span>` : `<span class="tag-amber">بانتظار التابلت…</span>`;
+        return `<div class="row" style="padding:6px 0; border-bottom:1px solid var(--border);"><span style="flex:1; font-size:14px;">${label}</span>${st}</div>`;
+      }).join("") : '<span class="muted">لا أوامر بعد</span>'}
+    </div>
+    <div class="msg" id="msg"></div>
+  `;
+}
+
+function renderSchedules() {
+  const rows = config.schedules.map(s => `
+    <div class="evt${s.isActive ? " now" : ""}" onclick="activateSchedule('${esc(s.name)}')">
+      <span style="flex:1; font-size:16px; font-weight:${s.isActive ? 600 : 400};">${esc(s.name)}</span>
+      ${s.isActive ? '<span class="tag-green">نشط</span>' : `<span class="tag-dim">${(s.events||[]).length} حدثًا</span>`}
+    </div>`).join("");
+  return `
+    <div class="card" style="display:flex; flex-direction:column; gap:10px;">
+      <h2>تبديل الجدول النشط</h2>
+      <div style="display:flex; flex-direction:column; gap:8px;">${rows || '<span class="muted">لا جداول</span>'}</div>
+    </div>
+    <div class="card" style="display:flex; flex-direction:column; gap:12px;">
+      <h2>إزاحة أوقات الجدول النشط</h2>
+      <div class="row">
+        <button class="chip" style="width:48px; font-size:22px;" onclick="bumpShift(-5)">−</button>
+        <span style="flex:1; text-align:center; font-size:22px; font-weight:600;" class="mono" id="shiftVal">+0 د</span>
+        <button class="chip" style="width:48px; font-size:22px;" onclick="bumpShift(5)">+</button>
+      </div>
+      <button class="btn-ghost" onclick="applyShift()">تطبيق الإزاحة</button>
+      <span class="muted">تُطبَّق على كل أحداث الجدول النشط وتُنشر للتابلت.</span>
+    </div>
+    <div class="msg" id="msg"></div>
+  `;
+}
+
+function renderLog() {
+  const rows = logs.slice(0, 40).map(l => {
+    const t = new Date(l.planned_at);
+    const time = new Intl.DateTimeFormat("ar", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }).format(t);
+    const drift = l.executed_at ? (new Date(l.executed_at) - t) + " ms" : "—";
+    const cls = l.status === "EXECUTED" ? "tag-green" : l.status === "SILENCED" ? "tag-amber" : "tag-dim";
+    return `<div class="evt"><span style="flex:1; font-size:14px;">${esc(l.event_name)}</span><span class="muted mono" style="margin-inline-end:8px;">${time}</span><span class="${cls}">${l.status}</span></div>`;
+  }).join("");
+  return `<span class="muted">سجل التنفيذ (آخر 40)</span><div style="display:flex; flex-direction:column; gap:8px;">${rows || '<span class="muted">لا سجل بعد</span>'}</div>`;
+}
+
+// ─── Actions ────────────────────────────────────────────────────────────────
+let delayMin = 0, shiftMin = 0;
+function pickDelay(el) {
+  document.querySelectorAll("#delayRow .pill").forEach(p => p.classList.remove("active"));
+  el.classList.add("active"); delayMin = +el.dataset.d;
+}
+function fillTpl(t) { const ta = document.getElementById("annText"); ta.value = t; ta.focus(); }
+function bumpShift(d) { shiftMin += d; document.getElementById("shiftVal").textContent = (shiftMin >= 0 ? "+" : "") + shiftMin + " د"; }
+
+async function sendBell() {
+  const { error } = await db.from("commands").insert({ school_id: schoolId, type: "bell", payload: {} });
+  await refresh();
+  toast(error ? "فشل: " + error.message : "✓ أُرسل أمر الجرس", !!error);
+}
+async function sendAnnounce() {
+  const text = document.getElementById("annText").value.trim();
+  if (!text) return toast("اكتب نص النداء أولًا", true);
+  const { error } = await db.from("commands").insert({ school_id: schoolId, type: "announce", payload: { text, delay: delayMin } });
+  if (!error) document.getElementById("annText").value = "";
+  await refresh(); showTab("announce");
+  toast(error ? "فشل: " + error.message : "✓ أُرسل النداء", !!error);
+}
+async function activateSchedule(name) {
+  config.schedules.forEach(s => s.isActive = s.name === name);
+  await publishConfig("✓ تم تفعيل: " + name);
+}
+async function applyShift() {
+  if (shiftMin === 0) return toast("لا إزاحة", true);
+  const s = config.schedules.find(x => x.isActive);
+  if (!s) return toast("لا جدول نشط", true);
+  s.events = (s.events || []).map(e => ({ ...e, startMinuteOfDay: Math.max(0, Math.min(1439, e.startMinuteOfDay + shiftMin)) }));
+  const applied = shiftMin; shiftMin = 0;
+  await publishConfig(`✓ أُزيحت الأوقات ${applied >= 0 ? "+" : ""}${applied} د ونُشرت`);
+}
+async function publishConfig(okMsg) {
+  const { error } = await db.from("school_configs")
+    .update({ payload: config, version: configVersion + 1, updated_at: new Date().toISOString() })
+    .eq("school_id", schoolId);
+  if (!error) configVersion++;
+  await refresh(); showTab("schedules");
+  toast(error ? "فشل: " + error.message : okMsg, !!error);
+}
+
+function toast(text, isError) {
+  const el = document.getElementById("msg");
+  if (!el) return;
+  el.textContent = text; el.className = "msg " + (isError ? "err" : "ok");
+  setTimeout(() => { if (el) el.className = "msg"; }, 5000);
+}
+function show(id, text, isError) {
+  const el = document.getElementById(id);
+  el.textContent = text; el.className = "msg " + (isError ? "err" : "ok");
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c])); }
+
+init();
+</script>
+</body>
+</html>
