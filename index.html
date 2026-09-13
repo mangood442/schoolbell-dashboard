@@ -4,56 +4,69 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>لوحة الجرس المدرسي</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
-    --green: #2e7d32; --green-dark: #1b5e20; --amber: #ffb300;
-    --bg: #f4f8f4; --card: #fff; --text: #17281a; --muted: #5c6f60; --line: #dbe5db;
-    --red: #c62828;
+    --green: #0F8A5F; --green-dark: #0B6B4A; --green-container: #E6F4ED; --green-border: #BFE3D2;
+    --amber: #B3701A; --amber-bg: #FBEFD6;
+    --bg: #F1F4F2; --card: #fff; --text: #0F1A16; --mid: #2F4239; --muted: #5E6F66; --line: #E0E7E3;
+    --red: #C0392B;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: system-ui, "Segoe UI", Tahoma, sans-serif; background: var(--bg); color: var(--text); }
-  header { background: var(--green); color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 16px; }
-  header h1 { font-size: 20px; margin: 0; flex: 1; }
-  header .school { opacity: .9; font-size: 14px; }
-  main { max-width: 1100px; margin: 0 auto; padding: 20px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
-  .tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
-  .tabs button { padding: 10px 20px; border: 1px solid var(--line); background: var(--card); border-radius: 24px; cursor: pointer; font-size: 15px; font-family: inherit; }
+  body { margin: 0; font-family: 'IBM Plex Sans Arabic', system-ui, "Segoe UI", Tahoma, sans-serif; background: var(--bg); color: var(--text); }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+  header { background: var(--card); color: var(--text); padding: 14px 28px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid var(--line); }
+  header .logo { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; background: var(--green); color: #fff; font-weight: 700; font-size: 18px; }
+  header h1 { font-size: 19px; font-weight: 600; margin: 0; flex: 1; }
+  header .school { color: var(--muted); font-size: 14px; }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 28px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; margin-bottom: 18px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+  .tabs button { padding: 10px 20px; border: 1px solid var(--line); background: var(--card); border-radius: 999px; cursor: pointer; font-size: 15px; font-family: inherit; color: var(--mid); transition: all .15s; }
+  .tabs button:hover { border-color: var(--green-border); }
   .tabs button.active { background: var(--green); color: #fff; border-color: var(--green); }
-  button.primary { background: var(--green); color: #fff; border: 0; padding: 10px 22px; border-radius: 8px; cursor: pointer; font-size: 15px; font-family: inherit; }
-  button.ghost { background: none; border: 1px solid var(--line); padding: 8px 14px; border-radius: 8px; cursor: pointer; font-family: inherit; }
-  button.danger { color: var(--red); border-color: var(--red); }
-  input, select { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; font-family: inherit; background: #fff; }
+  button.primary { background: var(--green); color: #fff; border: 0; padding: 11px 22px; border-radius: 12px; cursor: pointer; font-size: 15px; font-weight: 600; font-family: inherit; transition: background .15s; }
+  button.primary:hover { background: var(--green-dark); }
+  button.ghost { background: var(--card); border: 1px solid var(--line); padding: 9px 16px; border-radius: 12px; cursor: pointer; font-family: inherit; color: var(--mid); }
+  button.ghost:hover { border-color: var(--green-border); }
+  button.danger { color: var(--red); border-color: #EBC4BF; }
+  input, select { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; font-size: 14px; font-family: inherit; background: #fff; color: var(--text); }
+  input:focus, select:focus { outline: none; border-color: var(--green); }
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th, td { padding: 8px 6px; text-align: right; border-bottom: 1px solid var(--line); vertical-align: middle; }
-  th { color: var(--muted); font-weight: 600; }
+  th, td { padding: 12px 8px; text-align: right; border-bottom: 1px solid #EEF3F0; vertical-align: middle; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
   .days label { margin-inline-end: 4px; font-size: 12px; white-space: nowrap; }
-  .status-EXECUTED { color: var(--green); font-weight: 600; }
+  .status-EXECUTED { color: var(--green-dark); font-weight: 600; }
   .status-SILENCED { color: var(--amber); font-weight: 600; }
   .status-MISSED, .status-ERROR { color: var(--red); font-weight: 600; }
   .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-  .msg { padding: 10px 14px; border-radius: 8px; margin: 10px 0; display: none; }
-  .msg.ok { background: #e3f2e4; color: var(--green-dark); display: block; }
-  .msg.err { background: #fdecea; color: var(--red); display: block; }
-  .sched-pill { padding: 8px 16px; border-radius: 20px; border: 1px solid var(--line); cursor: pointer; background: #fff; font-family: inherit; }
-  .sched-pill.active { background: var(--green-dark); color: #fff; border-color: var(--green-dark); }
-  #login { max-width: 380px; margin: 80px auto; }
-  #login input { width: 100%; margin-bottom: 12px; padding: 12px; }
+  .msg { padding: 11px 16px; border-radius: 12px; margin: 10px 0; display: none; font-size: 14px; }
+  .msg.ok { background: var(--green-container); color: var(--green-dark); display: block; }
+  .msg.err { background: #FDECEA; color: var(--red); display: block; }
+  .sched-pill { padding: 9px 18px; border-radius: 999px; border: 1px solid var(--line); cursor: pointer; background: #fff; font-family: inherit; font-size: 15px; color: var(--mid); }
+  .sched-pill.active { background: var(--green-container); color: var(--green-dark); border-color: var(--green-border); font-weight: 600; }
+  #login { max-width: 400px; margin: 90px auto; }
+  #login .logo { width: 44px; height: 44px; border-radius: 12px; font-size: 22px; margin-bottom: 14px; }
+  #login input { width: 100%; margin-bottom: 12px; padding: 13px; }
   .muted { color: var(--muted); font-size: 13px; }
-  h2 { font-size: 18px; margin: 0 0 12px; }
+  h2 { font-size: 18px; font-weight: 600; margin: 0 0 14px; }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>🔔 لوحة الجرس المدرسي</h1>
+  <span class="logo">ج</span>
+  <h1>لوحة الجرس المدرسي</h1>
   <span class="school" id="schoolName"></span>
-  <button class="ghost" id="logoutBtn" style="display:none;color:#fff;border-color:#ffffff66">خروج</button>
+  <button class="ghost" id="logoutBtn" style="display:none">خروج</button>
 </header>
 
 <main>
   <!-- Login -->
   <div id="login" class="card">
+    <span class="logo">ج</span>
     <h2>تسجيل الدخول</h2>
     <input id="email" type="email" placeholder="البريد الإلكتروني" dir="ltr">
     <input id="password" type="password" placeholder="كلمة المرور" dir="ltr">

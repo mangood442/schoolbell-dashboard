@@ -4,47 +4,60 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>إدارة SchoolBell — المزوّد</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  :root { --navy:#1a237e; --navy-d:#0d1257; --bg:#f4f5fb; --card:#fff; --text:#171a2b;
-          --muted:#5b6072; --line:#dcdfe9; --green:#2e7d32; --red:#c62828; --amber:#b58900; }
+  :root { --navy:#4E5BE6; --navy-d:#3B47C4; --navy-container:#EAECFD; --navy-border:#C9CEF9;
+          --sidebar:#12152B; --bg:#F2F3F7; --card:#fff; --text:#151826;
+          --muted:#6B7290; --line:#E2E4EE; --green:#1E8A5A; --red:#C0392B; --amber:#B3701A; }
   * { box-sizing: border-box; }
-  body { margin:0; font-family: system-ui, "Segoe UI", Tahoma, sans-serif; background: var(--bg); color: var(--text); }
-  header { background: var(--navy); color:#fff; padding:14px 24px; display:flex; align-items:center; gap:16px; }
-  header h1 { font-size:20px; margin:0; flex:1; }
-  main { max-width:1200px; margin:0 auto; padding:20px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:16px; }
-  .tabs { display:flex; gap:8px; margin-bottom:16px; }
-  .tabs button { padding:10px 20px; border:1px solid var(--line); background:var(--card); border-radius:24px; cursor:pointer; font-size:15px; font-family:inherit; }
+  body { margin:0; font-family: 'IBM Plex Sans Arabic', system-ui, "Segoe UI", Tahoma, sans-serif; background: var(--bg); color: var(--text); }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+  header { background: var(--card); color:var(--text); padding:14px 28px; display:flex; align-items:center; gap:14px; border-bottom:1px solid var(--line); }
+  header .logo { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:10px; background:var(--navy); color:#fff; font-weight:700; font-size:18px; }
+  header h1 { font-size:19px; font-weight:600; margin:0; flex:1; }
+  main { max-width:1240px; margin:0 auto; padding:24px 28px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:22px; margin-bottom:18px; }
+  .tabs { display:flex; gap:8px; margin-bottom:18px; }
+  .tabs button { padding:10px 20px; border:1px solid var(--line); background:var(--card); border-radius:999px; cursor:pointer; font-size:15px; font-family:inherit; color:var(--muted); transition:all .15s; }
+  .tabs button:hover { border-color:var(--navy-border); }
   .tabs button.active { background:var(--navy); color:#fff; border-color:var(--navy); }
-  button.primary { background:var(--navy); color:#fff; border:0; padding:10px 22px; border-radius:8px; cursor:pointer; font-size:15px; font-family:inherit; }
-  button.ghost { background:none; border:1px solid var(--line); padding:6px 12px; border-radius:8px; cursor:pointer; font-family:inherit; }
-  button.danger { color:var(--red); border-color:var(--red); }
-  input, select { padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:14px; font-family:inherit; background:#fff; }
+  button.primary { background:var(--navy); color:#fff; border:0; padding:11px 22px; border-radius:12px; cursor:pointer; font-size:15px; font-weight:600; font-family:inherit; transition:background .15s; }
+  button.primary:hover { background:var(--navy-d); }
+  button.ghost { background:var(--card); border:1px solid var(--line); padding:8px 14px; border-radius:10px; cursor:pointer; font-family:inherit; color:var(--text); }
+  button.ghost:hover { border-color:var(--navy-border); }
+  button.danger { color:var(--red); border-color:#EBC4BF; }
+  input, select { padding:10px 12px; border:1px solid var(--line); border-radius:12px; font-size:14px; font-family:inherit; background:#fff; color:var(--text); }
+  input:focus, select:focus { outline:none; border-color:var(--navy); }
   table { width:100%; border-collapse:collapse; font-size:14px; }
-  th, td { padding:8px 6px; text-align:right; border-bottom:1px solid var(--line); vertical-align:middle; }
-  th { color:var(--muted); font-weight:600; }
+  th, td { padding:12px 8px; text-align:right; border-bottom:1px solid #EFF1F7; vertical-align:middle; }
+  th { color:var(--muted); font-weight:600; font-size:13px; }
   .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-  .msg { padding:10px 14px; border-radius:8px; margin:10px 0; display:none; }
-  .msg.ok { background:#e5e9f7; color:var(--navy-d); display:block; }
-  .msg.err { background:#fdecea; color:var(--red); display:block; }
-  #login { max-width:380px; margin:80px auto; }
-  #login input { width:100%; margin-bottom:12px; padding:12px; }
+  .msg { padding:11px 16px; border-radius:12px; margin:10px 0; display:none; font-size:14px; }
+  .msg.ok { background:var(--navy-container); color:var(--navy-d); display:block; }
+  .msg.err { background:#FDECEA; color:var(--red); display:block; }
+  #login { max-width:400px; margin:90px auto; }
+  #login .logo { display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:12px; background:var(--navy); color:#fff; font-weight:700; font-size:22px; margin-bottom:14px; }
+  #login input { width:100%; margin-bottom:12px; padding:13px; }
   .ok-txt { color:var(--green); font-weight:600; } .bad-txt { color:var(--red); font-weight:600; }
   .warn-txt { color:var(--amber); font-weight:600; }
-  code { background:#eef0f8; padding:2px 8px; border-radius:6px; direction:ltr; display:inline-block; }
-  h2 { font-size:18px; margin:0 0 12px; }
+  code { background:var(--navy-container); color:var(--navy-d); padding:3px 9px; border-radius:8px; direction:ltr; display:inline-block; font-family:'IBM Plex Mono', monospace; font-size:13px; }
+  h2 { font-size:18px; font-weight:600; margin:0 0 14px; }
   .muted { color:var(--muted); font-size:13px; }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>🛠 إدارة SchoolBell — لوحة المزوّد</h1>
-  <button class="ghost" id="logoutBtn" style="display:none;color:#fff;border-color:#ffffff66">خروج</button>
+  <span class="logo">ج</span>
+  <h1>إدارة SchoolBell — لوحة المزوّد</h1>
+  <button class="ghost" id="logoutBtn" style="display:none">خروج</button>
 </header>
 
 <main>
   <div id="login" class="card">
+    <span class="logo">ج</span>
     <h2>دخول المشرف العام</h2>
     <input id="email" type="email" placeholder="البريد الإلكتروني" dir="ltr">
     <input id="password" type="password" placeholder="كلمة المرور" dir="ltr">
