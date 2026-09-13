@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>إدارة SchoolBell — المزوّد</title>
+<style>
+  :root { --navy:#1a237e; --navy-d:#0d1257; --bg:#f4f5fb; --card:#fff; --text:#171a2b;
+          --muted:#5b6072; --line:#dcdfe9; --green:#2e7d32; --red:#c62828; --amber:#b58900; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, "Segoe UI", Tahoma, sans-serif; background: var(--bg); color: var(--text); }
+  header { background: var(--navy); color:#fff; padding:14px 24px; display:flex; align-items:center; gap:16px; }
+  header h1 { font-size:20px; margin:0; flex:1; }
+  main { max-width:1200px; margin:0 auto; padding:20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:16px; }
+  .tabs { display:flex; gap:8px; margin-bottom:16px; }
+  .tabs button { padding:10px 20px; border:1px solid var(--line); background:var(--card); border-radius:24px; cursor:pointer; font-size:15px; font-family:inherit; }
+  .tabs button.active { background:var(--navy); color:#fff; border-color:var(--navy); }
+  button.primary { background:var(--navy); color:#fff; border:0; padding:10px 22px; border-radius:8px; cursor:pointer; font-size:15px; font-family:inherit; }
+  button.ghost { background:none; border:1px solid var(--line); padding:6px 12px; border-radius:8px; cursor:pointer; font-family:inherit; }
+  button.danger { color:var(--red); border-color:var(--red); }
+  input, select { padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:14px; font-family:inherit; background:#fff; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { padding:8px 6px; text-align:right; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th { color:var(--muted); font-weight:600; }
+  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .msg { padding:10px 14px; border-radius:8px; margin:10px 0; display:none; }
+  .msg.ok { background:#e5e9f7; color:var(--navy-d); display:block; }
+  .msg.err { background:#fdecea; color:var(--red); display:block; }
+  #login { max-width:380px; margin:80px auto; }
+  #login input { width:100%; margin-bottom:12px; padding:12px; }
+  .ok-txt { color:var(--green); font-weight:600; } .bad-txt { color:var(--red); font-weight:600; }
+  .warn-txt { color:var(--amber); font-weight:600; }
+  code { background:#eef0f8; padding:2px 8px; border-radius:6px; direction:ltr; display:inline-block; }
+  h2 { font-size:18px; margin:0 0 12px; }
+  .muted { color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🛠 إدارة SchoolBell — لوحة المزوّد</h1>
+  <button class="ghost" id="logoutBtn" style="display:none;color:#fff;border-color:#ffffff66">خروج</button>
+</header>
+
+<main>
+  <div id="login" class="card">
+    <h2>دخول المشرف العام</h2>
+    <input id="email" type="email" placeholder="البريد الإلكتروني" dir="ltr">
+    <input id="password" type="password" placeholder="كلمة المرور" dir="ltr">
+    <button class="primary" style="width:100%" onclick="login()">دخول</button>
+    <div class="msg" id="loginMsg"></div>
+  </div>
+
+  <div id="app" style="display:none">
+    <div class="tabs">
+      <button data-tab="schools" class="active" onclick="showTab('schools')">🏫 المدارس</button>
+      <button data-tab="invoices" onclick="showTab('invoices')">🧾 الفواتير</button>
+      <button data-tab="devices" onclick="showTab('devices')">📱 الأجهزة</button>
+    </div>
+    <div class="msg" id="msg"></div>
+
+    <!-- Schools -->
+    <section id="tab-schools" class="card">
+      <div class="row" style="margin-bottom:14px">
+        <h2 style="flex:1">المدارس</h2>
+        <input id="newName" placeholder="اسم المدرسة الجديدة" style="min-width:220px">
+        <select id="newPlan"><option value="basic">أساسي</option><option value="full">كامل</option></select>
+        <input id="newUntil" type="date">
+        <button class="primary" onclick="createSchool()">+ إضافة مدرسة</button>
+      </div>
+      <table><thead><tr>
+        <th>المدرسة</th><th>الخطة</th><th>الاشتراك حتى</th><th>الحالة</th><th>أجهزة</th><th>رموز التفعيل</th><th></th>
+      </tr></thead><tbody id="schoolsBody"></tbody></table>
+    </section>
+
+    <!-- Invoices -->
+    <section id="tab-invoices" class="card" style="display:none">
+      <div class="row" style="margin-bottom:14px">
+        <h2 style="flex:1">الفواتير</h2>
+        <select id="invSchool"></select>
+        <input id="invAmount" type="number" placeholder="المبلغ" style="width:110px">
+        <select id="invMonths">
+          <option value="12">سنة</option><option value="6">6 أشهر</option><option value="3">3 أشهر</option><option value="1">شهر</option>
+        </select>
+        <button class="primary" onclick="createInvoice()">+ فاتورة</button>
+      </div>
+      <table><thead><tr>
+        <th>#</th><th>المدرسة</th><th>المبلغ</th><th>المدة</th><th>الحالة</th><th>أُنشئت</th><th></th>
+      </tr></thead><tbody id="invoicesBody"></tbody></table>
+      <p class="muted">"تحصيل" يمدّد اشتراك المدرسة تلقائيًا بمدة الفاتورة من تاريخ الانتهاء الحالي. ربط بوابة دفع (Moyasar/Tap) لاحقًا يستدعي نفس الدالة عبر Webhook.</p>
+    </section>
+
+    <!-- Devices -->
+    <section id="tab-devices" class="card" style="display:none">
+      <h2>كل الأجهزة</h2>
+      <table><thead><tr><th>المدرسة</th><th>الجهاز</th><th>الإصدار</th><th>آخر ظهور</th><th></th></tr></thead>
+      <tbody id="devicesBody"></tbody></table>
+    </section>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
+<script>
+const SUPABASE_URL = "https://tcdknoalnynnbuvlozwy.supabase.co";
+const SUPABASE_KEY = "sb_publishable_D0YQfRkraujKgNEVpSNKhw_YMvm2oB7";
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let schools = [];
+
+async function login() {
+  const { error } = await db.auth.signInWithPassword({
+    email: document.getElementById("email").value.trim(),
+    password: document.getElementById("password").value,
+  });
+  if (error) return show("loginMsg", "فشل الدخول: " + error.message, true);
+  init();
+}
+
+async function init() {
+  const { data: { session } } = await db.auth.getSession();
+  if (!session) return;
+  const { data: sa } = await db.from("super_admins").select("user_id").maybeSingle();
+  if (!sa) return show("loginMsg", "هذا الحساب ليس مشرفًا عامًا. شغّل link_super_admin('بريدك') في SQL.", true);
+  document.getElementById("login").style.display = "none";
+  document.getElementById("app").style.display = "block";
+  document.getElementById("logoutBtn").style.display = "inline-block";
+  loadSchools();
+}
+document.getElementById("logoutBtn").onclick = async () => { await db.auth.signOut(); location.reload(); };
+
+// ─── Schools ────────────────────────────────────────────────────────────────
+async function loadSchools() {
+  const [{ data: list }, { data: codes }, { data: devices }] = await Promise.all([
+    db.from("schools").select("*").order("created_at"),
+    db.from("activation_codes").select("code, school_id, used_at"),
+    db.from("devices").select("id, school_id"),
+  ]);
+  schools = list || [];
+  const body = document.getElementById("schoolsBody");
+  body.innerHTML = "";
+  schools.forEach(s => {
+    const freeCodes = (codes || []).filter(c => c.school_id === s.id && !c.used_at).map(c => c.code);
+    const deviceCount = (devices || []).filter(d => d.school_id === s.id).length;
+    const expired = s.subscription_until && new Date(s.subscription_until) < new Date();
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><strong>${esc(s.name)}</strong></td>
+      <td><select onchange="updateSchool('${s.id}', {plan: this.value})">
+        <option value="basic" ${s.plan === "basic" ? "selected" : ""}>أساسي</option>
+        <option value="full" ${s.plan === "full" ? "selected" : ""}>كامل</option></select></td>
+      <td><input type="date" value="${s.subscription_until || ""}"
+           onchange="updateSchool('${s.id}', {subscription_until: this.value || null})">
+           ${expired ? '<div class="bad-txt">منتهٍ</div>' : ""}</td>
+      <td>${s.active ? '<span class="ok-txt">نشطة</span>' : '<span class="bad-txt">موقوفة</span>'}
+          <button class="ghost" onclick="updateSchool('${s.id}', {active: ${!s.active}})">${s.active ? "إيقاف" : "تفعيل"}</button></td>
+      <td>${deviceCount}</td>
+      <td>${freeCodes.map(c => `<code>${c}</code>`).join(" ") || '<span class="muted">—</span>'}
+          <button class="ghost" onclick="newCode('${s.id}')">+ رمز</button></td>
+      <td><button class="ghost danger" onclick="deleteSchool('${s.id}', '${esc(s.name)}')">حذف</button></td>`;
+    body.appendChild(tr);
+  });
+  // invoices school select
+  document.getElementById("invSchool").innerHTML =
+    schools.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
+}
+
+async function createSchool() {
+  const name = document.getElementById("newName").value.trim();
+  if (!name) return;
+  const { data, error } = await db.rpc("create_school_with_code", {
+    p_name: name,
+    p_plan: document.getElementById("newPlan").value,
+    p_until: document.getElementById("newUntil").value || null,
+  });
+  if (error) return show("msg", "فشل: " + error.message, true);
+  const code = data?.[0]?.activation_code;
+  show("msg", `✓ أُنشئت "${name}" — رمز التفعيل: ${code}`);
+  document.getElementById("newName").value = "";
+  loadSchools();
+}
+
+async function updateSchool(id, fields) {
+  const { error } = await db.from("schools").update(fields).eq("id", id);
+  show("msg", error ? "فشل: " + error.message : "✓ حُدّثت", !!error);
+  loadSchools();
+}
+
+async function newCode(schoolId) {
+  const { data, error } = await db.rpc("new_activation_code", { p_school: schoolId });
+  if (error) return show("msg", "فشل: " + error.message, true);
+  show("msg", "✓ رمز جديد: " + data);
+  loadSchools();
+}
+
+async function deleteSchool(id, name) {
+  if (!confirm(`حذف "${name}" نهائيًا بكل بياناتها؟`)) return;
+  const { error } = await db.from("schools").delete().eq("id", id);
+  show("msg", error ? "فشل: " + error.message : "✓ حُذفت", !!error);
+  loadSchools();
+}
+
+// ─── Invoices ───────────────────────────────────────────────────────────────
+async function loadInvoices() {
+  const { data } = await db.from("invoices")
+    .select("id, school_id, amount, currency, period_months, status, created_at")
+    .order("created_at", { ascending: false }).limit(100);
+  document.getElementById("invoicesBody").innerHTML = (data || []).map(inv => {
+    const school = schools.find(s => s.id === inv.school_id);
+    const statusHtml = inv.status === "paid" ? '<span class="ok-txt">مدفوعة</span>'
+      : inv.status === "cancelled" ? '<span class="muted">ملغاة</span>'
+      : '<span class="warn-txt">معلّقة</span>';
+    const actions = inv.status === "pending"
+      ? `<button class="ghost" onclick="payInvoice(${inv.id})">✓ تحصيل</button>
+         <button class="ghost danger" onclick="cancelInvoice(${inv.id})">إلغاء</button>` : "";
+    return `<tr><td>${inv.id}</td><td>${esc(school?.name || "?")}</td>
+      <td dir="ltr">${inv.amount} ${inv.currency}</td><td>${inv.period_months} شهر</td>
+      <td>${statusHtml}</td><td dir="ltr">${fmt(inv.created_at)}</td><td>${actions}</td></tr>`;
+  }).join("");
+}
+
+async function createInvoice() {
+  const amount = +document.getElementById("invAmount").value;
+  if (!amount) return;
+  const { error } = await db.from("invoices").insert({
+    school_id: document.getElementById("invSchool").value,
+    amount,
+    period_months: +document.getElementById("invMonths").value,
+  });
+  show("msg", error ? "فشل: " + error.message : "✓ أُنشئت الفاتورة", !!error);
+  loadInvoices();
+}
+
+async function payInvoice(id) {
+  const { data, error } = await db.rpc("mark_invoice_paid", { p_invoice: id, p_ref: "manual" });
+  if (error) return show("msg", "فشل: " + error.message, true);
+  show("msg", "✓ حُصّلت — الاشتراك مُدّد حتى " + data);
+  loadInvoices(); loadSchools();
+}
+
+async function cancelInvoice(id) {
+  await db.from("invoices").update({ status: "cancelled" }).eq("id", id);
+  loadInvoices();
+}
+
+// ─── Devices ────────────────────────────────────────────────────────────────
+async function loadDevices() {
+  const { data } = await db.from("devices")
+    .select("id, school_id, name, app_version, last_seen_at")
+    .order("last_seen_at", { ascending: false });
+  document.getElementById("devicesBody").innerHTML = (data || []).map(d => {
+    const school = schools.find(s => s.id === d.school_id);
+    const stale = d.last_seen_at && (Date.now() - new Date(d.last_seen_at)) > 24 * 3600e3;
+    return `<tr><td>${esc(school?.name || "?")}</td><td>${esc(d.name)}</td>
+      <td dir="ltr">${esc(d.app_version || "—")}</td>
+      <td dir="ltr" class="${stale ? "bad-txt" : "ok-txt"}">${fmt(d.last_seen_at)}</td>
+      <td><button class="ghost danger" onclick="removeDevice('${d.id}')">فصل</button></td></tr>`;
+  }).join("");
+}
+
+async function removeDevice(id) {
+  if (!confirm("فصل هذا الجهاز؟ سيحتاج رمز تفعيل جديدًا.")) return;
+  await db.from("devices").delete().eq("id", id);
+  loadDevices();
+}
+
+// ─── UI ─────────────────────────────────────────────────────────────────────
+function showTab(name) {
+  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  ["schools", "invoices", "devices"].forEach(t =>
+    document.getElementById("tab-" + t).style.display = t === name ? "block" : "none");
+  if (name === "schools") loadSchools();
+  if (name === "invoices") loadInvoices();
+  if (name === "devices") loadDevices();
+}
+function show(id, text, isError) {
+  const el = document.getElementById(id);
+  el.textContent = text; el.className = "msg " + (isError ? "err" : "ok");
+  setTimeout(() => { el.className = "msg"; }, 8000);
+}
+function fmt(ts) { return ts ? new Date(ts).toLocaleString("ar-SA", { dateStyle: "short", timeStyle: "short" }) : "—"; }
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+init();
+</script>
+</body>
+</html>
