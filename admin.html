@@ -10,14 +10,14 @@
 <style>
   :root { --navy:#4E5BE6; --navy-d:#3B47C4; --navy-container:#EAECFD; --navy-border:#C9CEF9;
           --sidebar:#12152B; --bg:#F2F3F7; --card:#fff; --text:#151826;
-          --muted:#6B7290; --line:#E2E4EE; --green:#1E8A5A; --red:#C0392B; --amber:#B3701A; }
+          --muted:#6B7290; --line:#E2E4EE; --green:#1E8A5A; --green-bg:#E4F5EC; --red:#C0392B; --amber:#B3701A; --amber-bg:#FBEFD6; }
   * { box-sizing: border-box; }
-  body { margin:0; font-family: 'IBM Plex Sans Arabic', system-ui, "Segoe UI", Tahoma, sans-serif; background: var(--bg); color: var(--text); }
-  .mono { font-family: 'IBM Plex Mono', monospace; }
-  header { background: var(--card); color:var(--text); padding:14px 28px; display:flex; align-items:center; gap:14px; border-bottom:1px solid var(--line); }
+  body { margin:0; font-family:'IBM Plex Sans Arabic', system-ui, "Segoe UI", Tahoma, sans-serif; background:var(--bg); color:var(--text); }
+  .mono { font-family:'IBM Plex Mono', monospace; font-variant-numeric:tabular-nums; }
+  header { background:var(--card); color:var(--text); padding:14px 28px; display:flex; align-items:center; gap:14px; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:10; }
   header .logo { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:10px; background:var(--navy); color:#fff; font-weight:700; font-size:18px; }
   header h1 { font-size:19px; font-weight:600; margin:0; flex:1; }
-  main { max-width:1240px; margin:0 auto; padding:24px 28px; }
+  main { max-width:1240px; margin:0 auto; padding:22px 28px 60px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:22px; margin-bottom:18px; }
   .tabs { display:flex; gap:8px; margin-bottom:18px; }
   .tabs button { padding:10px 20px; border:1px solid var(--line); background:var(--card); border-radius:999px; cursor:pointer; font-size:15px; font-family:inherit; color:var(--muted); transition:all .15s; }
@@ -25,16 +25,19 @@
   .tabs button.active { background:var(--navy); color:#fff; border-color:var(--navy); }
   button.primary { background:var(--navy); color:#fff; border:0; padding:11px 22px; border-radius:12px; cursor:pointer; font-size:15px; font-weight:600; font-family:inherit; transition:background .15s; }
   button.primary:hover { background:var(--navy-d); }
-  button.ghost { background:var(--card); border:1px solid var(--line); padding:8px 14px; border-radius:10px; cursor:pointer; font-family:inherit; color:var(--text); }
+  button.ghost { background:var(--card); border:1px solid var(--line); padding:8px 14px; border-radius:10px; cursor:pointer; font-family:inherit; color:var(--text); font-size:14px; }
   button.ghost:hover { border-color:var(--navy-border); }
   button.danger { color:var(--red); border-color:#EBC4BF; }
-  input, select { padding:10px 12px; border:1px solid var(--line); border-radius:12px; font-size:14px; font-family:inherit; background:#fff; color:var(--text); }
-  input:focus, select:focus { outline:none; border-color:var(--navy); }
+  button.sm { padding:6px 12px; font-size:13px; border-radius:9px; }
+  input, select, textarea { padding:10px 12px; border:1px solid var(--line); border-radius:12px; font-size:14px; font-family:inherit; background:#fff; color:var(--text); }
+  input:focus, select:focus, textarea:focus { outline:none; border-color:var(--navy); }
   table { width:100%; border-collapse:collapse; font-size:14px; }
   th, td { padding:12px 8px; text-align:right; border-bottom:1px solid #EFF1F7; vertical-align:middle; }
   th { color:var(--muted); font-weight:600; font-size:13px; }
+  tr.clickable { cursor:pointer; }
+  tr.clickable:hover td { background:#F7F8FC; }
   .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-  .msg { padding:11px 16px; border-radius:12px; margin:10px 0; display:none; font-size:14px; }
+  .msg { padding:11px 16px; border-radius:12px; margin:10px 0; display:none; font-size:14px; position:fixed; bottom:20px; inset-inline-start:50%; transform:translateX(50%); z-index:50; box-shadow:0 10px 30px rgba(0,0,0,.15); }
   .msg.ok { background:var(--navy-container); color:var(--navy-d); display:block; }
   .msg.err { background:#FDECEA; color:var(--red); display:block; }
   #login { max-width:400px; margin:90px auto; }
@@ -44,7 +47,31 @@
   .warn-txt { color:var(--amber); font-weight:600; }
   code { background:var(--navy-container); color:var(--navy-d); padding:3px 9px; border-radius:8px; direction:ltr; display:inline-block; font-family:'IBM Plex Mono', monospace; font-size:13px; }
   h2 { font-size:18px; font-weight:600; margin:0 0 14px; }
+  h3 { font-size:16px; font-weight:600; margin:0 0 12px; }
   .muted { color:var(--muted); font-size:13px; }
+  /* KPI */
+  .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+  .kpi { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px; }
+  .kpi .l { font-size:13.5px; color:var(--muted); }
+  .kpi .n { font-size:30px; font-weight:600; margin-top:6px; letter-spacing:-.01em; }
+  .kpi .n.warn { color:var(--amber); } .kpi .n.bad { color:var(--red); }
+  /* filter chips */
+  .chips { display:flex; gap:8px; flex-wrap:wrap; }
+  .chip { padding:8px 16px; border-radius:999px; border:1px solid var(--line); background:#fff; cursor:pointer; font-size:14px; font-family:inherit; color:var(--muted); }
+  .chip.on { background:var(--navy-container); border-color:var(--navy-border); color:var(--navy-d); font-weight:600; }
+  .pill { display:inline-block; font-size:12px; padding:3px 10px; border-radius:999px; font-weight:600; }
+  .pill.g { background:var(--green-bg); color:var(--green); }
+  .pill.a { background:var(--amber-bg); color:var(--amber); }
+  .pill.r { background:#FDECEA; color:var(--red); }
+  /* detail */
+  .back { background:none; border:0; color:var(--navy-d); font-family:inherit; font-size:15px; cursor:pointer; padding:6px 0; display:inline-flex; align-items:center; gap:8px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .sched-pill { padding:9px 16px; border-radius:999px; border:1px solid var(--line); cursor:pointer; background:#fff; font-family:inherit; font-size:15px; color:var(--text); }
+  .sched-pill.active { background:var(--green-bg); color:var(--green); border-color:#BFE3D2; font-weight:600; }
+  .days label { font-size:11px; margin-inline-end:2px; white-space:nowrap; color:var(--muted); }
+  .subtle { background:#F7F8FC; border-radius:14px; padding:16px; }
+  @media (max-width:820px){ .kpis, .grid2 { grid-template-columns:1fr; } main { padding:16px; } }
+  [hidden] { display:none !important; }
 </style>
 </head>
 <body>
@@ -52,74 +79,98 @@
 <header>
   <span class="logo">ج</span>
   <h1>إدارة SchoolBell — لوحة المزوّد</h1>
-  <button class="ghost" id="logoutBtn" style="display:none">خروج</button>
+  <button class="ghost" id="logoutBtn" hidden>خروج</button>
 </header>
 
 <main>
   <div id="login" class="card">
     <span class="logo">ج</span>
     <h2>دخول المشرف العام</h2>
-    <input id="email" type="email" placeholder="البريد الإلكتروني" dir="ltr">
-    <input id="password" type="password" placeholder="كلمة المرور" dir="ltr">
+    <input id="email" type="email" placeholder="البريد الإلكتروني" dir="ltr" autocomplete="username">
+    <input id="password" type="password" placeholder="كلمة المرور" dir="ltr" autocomplete="current-password">
     <button class="primary" style="width:100%" onclick="login()">دخول</button>
     <div class="msg" id="loginMsg"></div>
   </div>
 
-  <div id="app" style="display:none">
+  <!-- ── App: list view ── -->
+  <div id="app" hidden>
     <div class="tabs">
-      <button data-tab="schools" class="active" onclick="showTab('schools')">🏫 المدارس</button>
-      <button data-tab="invoices" onclick="showTab('invoices')">🧾 الفواتير</button>
+      <button data-tab="overview" class="active" onclick="showTab('overview')">📊 نظرة عامة</button>
+      <button data-tab="schools" onclick="showTab('schools')">🏫 المدارس</button>
       <button data-tab="devices" onclick="showTab('devices')">📱 الأجهزة</button>
+      <button data-tab="invoices" onclick="showTab('invoices')">🧾 الفواتير</button>
     </div>
-    <div class="msg" id="msg"></div>
 
-    <!-- Schools -->
-    <section id="tab-schools" class="card">
-      <div class="row" style="margin-bottom:14px">
-        <h2 style="flex:1">المدارس</h2>
-        <input id="newName" placeholder="اسم المدرسة الجديدة" style="min-width:220px">
-        <select id="newPlan"><option value="basic">أساسي</option><option value="full">كامل</option></select>
-        <input id="newUntil" type="date">
-        <button class="primary" onclick="createSchool()">+ إضافة مدرسة</button>
+    <!-- Overview -->
+    <section id="tab-overview">
+      <div class="kpis" id="kpis"></div>
+      <div class="card" style="margin-top:18px">
+        <h2>يحتاج انتباهك</h2>
+        <div id="attention"></div>
       </div>
-      <table><thead><tr>
-        <th>المدرسة</th><th>الخطة</th><th>الاشتراك حتى</th><th>الحالة</th><th>أجهزة</th><th>رموز التفعيل</th><th></th>
-      </tr></thead><tbody id="schoolsBody"></tbody></table>
     </section>
 
-    <!-- Invoices -->
-    <section id="tab-invoices" class="card" style="display:none">
-      <div class="row" style="margin-bottom:14px">
-        <h2 style="flex:1">الفواتير</h2>
-        <select id="invSchool"></select>
-        <input id="invAmount" type="number" placeholder="المبلغ" style="width:110px">
-        <select id="invMonths">
-          <option value="12">سنة</option><option value="6">6 أشهر</option><option value="3">3 أشهر</option><option value="1">شهر</option>
-        </select>
-        <button class="primary" onclick="createInvoice()">+ فاتورة</button>
+    <!-- Schools -->
+    <section id="tab-schools" hidden>
+      <div class="card">
+        <div class="row" style="margin-bottom:14px">
+          <h2 style="flex:1">المدارس</h2>
+          <input id="search" placeholder="بحث باسم المدرسة…" style="min-width:220px" oninput="renderSchools()">
+          <button class="primary" onclick="openNewSchool()">+ إضافة مدرسة</button>
+        </div>
+        <div class="chips" id="schoolChips" style="margin-bottom:14px"></div>
+        <table><thead><tr>
+          <th>المدرسة</th><th>الخطة</th><th>الاشتراك حتى</th><th>الحالة</th><th>أجهزة</th><th>رموز حرة</th>
+        </tr></thead><tbody id="schoolsBody"></tbody></table>
       </div>
-      <table><thead><tr>
-        <th>#</th><th>المدرسة</th><th>المبلغ</th><th>المدة</th><th>الحالة</th><th>أُنشئت</th><th></th>
-      </tr></thead><tbody id="invoicesBody"></tbody></table>
-      <p class="muted">"تحصيل" يمدّد اشتراك المدرسة تلقائيًا بمدة الفاتورة من تاريخ الانتهاء الحالي. ربط بوابة دفع (Moyasar/Tap) لاحقًا يستدعي نفس الدالة عبر Webhook.</p>
     </section>
 
     <!-- Devices -->
-    <section id="tab-devices" class="card" style="display:none">
-      <h2>كل الأجهزة</h2>
-      <table><thead><tr><th>المدرسة</th><th>الجهاز</th><th>الإصدار</th><th>آخر ظهور</th><th></th></tr></thead>
-      <tbody id="devicesBody"></tbody></table>
+    <section id="tab-devices" hidden>
+      <div class="card">
+        <h2>كل الأجهزة</h2>
+        <table><thead><tr><th>المدرسة</th><th>الجهاز</th><th>الإصدار</th><th>آخر ظهور</th><th></th></tr></thead>
+        <tbody id="devicesBody"></tbody></table>
+      </div>
+    </section>
+
+    <!-- Invoices -->
+    <section id="tab-invoices" hidden>
+      <div class="card">
+        <div class="row" style="margin-bottom:14px">
+          <h2 style="flex:1">الفواتير</h2>
+          <select id="invSchool"></select>
+          <input id="invAmount" type="number" placeholder="المبلغ" style="width:110px">
+          <select id="invMonths"><option value="12">سنة</option><option value="6">6 أشهر</option><option value="3">3 أشهر</option><option value="1">شهر</option></select>
+          <button class="primary" onclick="createInvoice()">+ فاتورة</button>
+        </div>
+        <table><thead><tr><th>#</th><th>المدرسة</th><th>المبلغ</th><th>المدة</th><th>الحالة</th><th>أُنشئت</th><th></th></tr></thead>
+        <tbody id="invoicesBody"></tbody></table>
+      </div>
     </section>
   </div>
+
+  <!-- ── School detail view ── -->
+  <div id="detail" hidden></div>
 </main>
+
+<div class="msg" id="msg"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
 <script>
 const SUPABASE_URL = "https://tcdknoalnynnbuvlozwy.supabase.co";
 const SUPABASE_KEY = "sb_publishable_D0YQfRkraujKgNEVpSNKhw_YMvm2oB7";
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-let schools = [];
 
+const DAY_NAMES = ["ن","ث","ر","ع","خ","ج","س"];   // ISO bit0=Mon..bit6=Sun
+const DAY_ORDER = [6,0,1,2,3,4,5];                  // display Sun first
+const SOUNDS = { bell1:"جرس كهربائي", bell2:"جرس برونزي", bell3:"لحن ترحيبي", bell4:"دينغ دونغ", bell5:"غونغ هادئ" };
+const DAY_MS = 86400000;
+
+let schools = [], devices = [], invoices = [], codes = [];
+let filter = "all", currentTab = "overview";
+
+// ─── Auth ─────────────────────────────────────────────────────────────────
 async function login() {
   const { error } = await db.auth.signInWithPassword({
     email: document.getElementById("email").value.trim(),
@@ -128,170 +179,396 @@ async function login() {
   if (error) return show("loginMsg", "فشل الدخول: " + error.message, true);
   init();
 }
-
 async function init() {
   const { data: { session } } = await db.auth.getSession();
   if (!session) return;
   const { data: sa } = await db.from("super_admins").select("user_id").maybeSingle();
-  if (!sa) return show("loginMsg", "هذا الحساب ليس مشرفًا عامًا. شغّل link_super_admin('بريدك') في SQL.", true);
-  document.getElementById("login").style.display = "none";
-  document.getElementById("app").style.display = "block";
-  document.getElementById("logoutBtn").style.display = "inline-block";
-  loadSchools();
+  if (!sa) return show("loginMsg", "هذا الحساب ليس مشرفًا عامًا.", true);
+  document.getElementById("login").hidden = true;
+  document.getElementById("app").hidden = false;
+  document.getElementById("logoutBtn").hidden = false;
+  await loadAll();
+  showTab("overview");
 }
 document.getElementById("logoutBtn").onclick = async () => { await db.auth.signOut(); location.reload(); };
 
-// ─── Schools ────────────────────────────────────────────────────────────────
-async function loadSchools() {
-  const [{ data: list }, { data: codes }, { data: devices }] = await Promise.all([
+// ─── Data ─────────────────────────────────────────────────────────────────
+async function loadAll() {
+  const [a,b,c,d] = await Promise.all([
     db.from("schools").select("*").order("created_at"),
+    db.from("devices").select("id, school_id, name, app_version, last_seen_at"),
+    db.from("invoices").select("id, school_id, amount, currency, period_months, status, created_at, paid_at").order("created_at",{ascending:false}).limit(200),
     db.from("activation_codes").select("code, school_id, used_at"),
-    db.from("devices").select("id, school_id"),
   ]);
-  schools = list || [];
-  const body = document.getElementById("schoolsBody");
-  body.innerHTML = "";
-  schools.forEach(s => {
-    const freeCodes = (codes || []).filter(c => c.school_id === s.id && !c.used_at).map(c => c.code);
-    const deviceCount = (devices || []).filter(d => d.school_id === s.id).length;
-    const expired = s.subscription_until && new Date(s.subscription_until) < new Date();
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td><strong>${esc(s.name)}</strong></td>
-      <td><select onchange="updateSchool('${s.id}', {plan: this.value})">
-        <option value="basic" ${s.plan === "basic" ? "selected" : ""}>أساسي</option>
-        <option value="full" ${s.plan === "full" ? "selected" : ""}>كامل</option></select></td>
-      <td><input type="date" value="${s.subscription_until || ""}"
-           onchange="updateSchool('${s.id}', {subscription_until: this.value || null})">
-           ${expired ? '<div class="bad-txt">منتهٍ</div>' : ""}</td>
-      <td>${s.active ? '<span class="ok-txt">نشطة</span>' : '<span class="bad-txt">موقوفة</span>'}
-          <button class="ghost" onclick="updateSchool('${s.id}', {active: ${!s.active}})">${s.active ? "إيقاف" : "تفعيل"}</button></td>
-      <td>${deviceCount}</td>
-      <td>${freeCodes.map(c => `<code>${c}</code>`).join(" ") || '<span class="muted">—</span>'}
-          <button class="ghost" onclick="newCode('${s.id}')">+ رمز</button></td>
-      <td><button class="ghost danger" onclick="deleteSchool('${s.id}', '${esc(s.name)}')">حذف</button></td>`;
-    body.appendChild(tr);
-  });
-  // invoices school select
-  document.getElementById("invSchool").innerHTML =
-    schools.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
+  schools = a.data || []; devices = b.data || []; invoices = c.data || []; codes = d.data || [];
+  document.getElementById("invSchool").innerHTML = schools.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join("");
 }
-
-async function createSchool() {
-  const name = document.getElementById("newName").value.trim();
-  if (!name) return;
-  const { data, error } = await db.rpc("create_school_with_code", {
-    p_name: name,
-    p_plan: document.getElementById("newPlan").value,
-    p_until: document.getElementById("newUntil").value || null,
-  });
-  if (error) return show("msg", "فشل: " + error.message, true);
-  const code = data?.[0]?.activation_code;
-  show("msg", `✓ أُنشئت "${name}" — رمز التفعيل: ${code}`);
-  document.getElementById("newName").value = "";
-  loadSchools();
+function schoolStatus(s) {
+  if (!s.active) return "stopped";
+  if (!s.subscription_until) return "active";
+  const until = new Date(s.subscription_until), now = new Date();
+  if (until < now) return "expired";
+  if ((until - now) < 30*DAY_MS) return "expiring";
+  return "active";
 }
+function deviceCount(id){ return devices.filter(d=>d.school_id===id).length; }
+function isOnline(d){ return d.last_seen_at && (Date.now()-new Date(d.last_seen_at)) < DAY_MS; }
+function freeCodes(id){ return codes.filter(c=>c.school_id===id && !c.used_at).map(c=>c.code); }
 
-async function updateSchool(id, fields) {
-  const { error } = await db.from("schools").update(fields).eq("id", id);
-  show("msg", error ? "فشل: " + error.message : "✓ حُدّثت", !!error);
-  loadSchools();
-}
+// ─── Overview ───────────────────────────────────────────────────────────────
+function renderOverview() {
+  const active = schools.filter(s=>schoolStatus(s)!=="stopped" && schoolStatus(s)!=="expired").length;
+  const online = devices.filter(isOnline).length;
+  const now = new Date(), m = now.getMonth(), y = now.getFullYear();
+  const revenue = invoices.filter(i=>i.status==="paid" && i.paid_at && new Date(i.paid_at).getMonth()===m && new Date(i.paid_at).getFullYear()===y)
+    .reduce((a,i)=>a+Number(i.amount||0),0);
+  const expiring = schools.filter(s=>schoolStatus(s)==="expiring").length;
+  const expired = schools.filter(s=>schoolStatus(s)==="expired").length;
+  document.getElementById("kpis").innerHTML = `
+    <div class="kpi"><div class="l">مدارس نشطة</div><div class="n">${active}</div></div>
+    <div class="kpi"><div class="l">أجهزة متصلة الآن</div><div class="n">${online}<span class="muted" style="font-size:15px"> / ${devices.length}</span></div></div>
+    <div class="kpi"><div class="l">إيراد الشهر</div><div class="n">${revenue.toLocaleString("ar")} <span class="muted" style="font-size:15px">ر.س</span></div></div>
+    <div class="kpi"><div class="l">اشتراكات تنتهي خلال 30 يومًا</div><div class="n ${expired?"bad":"warn"}">${expiring}${expired?` <span style="font-size:15px">(+${expired} منتهٍ)</span>`:""}</div></div>`;
 
-async function newCode(schoolId) {
-  const { data, error } = await db.rpc("new_activation_code", { p_school: schoolId });
-  if (error) return show("msg", "فشل: " + error.message, true);
-  show("msg", "✓ رمز جديد: " + data);
-  loadSchools();
-}
-
-async function deleteSchool(id, name) {
-  if (!confirm(`حذف "${name}" نهائيًا بكل بياناتها؟`)) return;
-  const { error } = await db.from("schools").delete().eq("id", id);
-  show("msg", error ? "فشل: " + error.message : "✓ حُذفت", !!error);
-  loadSchools();
-}
-
-// ─── Invoices ───────────────────────────────────────────────────────────────
-async function loadInvoices() {
-  const { data } = await db.from("invoices")
-    .select("id, school_id, amount, currency, period_months, status, created_at")
-    .order("created_at", { ascending: false }).limit(100);
-  document.getElementById("invoicesBody").innerHTML = (data || []).map(inv => {
-    const school = schools.find(s => s.id === inv.school_id);
-    const statusHtml = inv.status === "paid" ? '<span class="ok-txt">مدفوعة</span>'
-      : inv.status === "cancelled" ? '<span class="muted">ملغاة</span>'
-      : '<span class="warn-txt">معلّقة</span>';
-    const actions = inv.status === "pending"
-      ? `<button class="ghost" onclick="payInvoice(${inv.id})">✓ تحصيل</button>
-         <button class="ghost danger" onclick="cancelInvoice(${inv.id})">إلغاء</button>` : "";
-    return `<tr><td>${inv.id}</td><td>${esc(school?.name || "?")}</td>
-      <td dir="ltr">${inv.amount} ${inv.currency}</td><td>${inv.period_months} شهر</td>
-      <td>${statusHtml}</td><td dir="ltr">${fmt(inv.created_at)}</td><td>${actions}</td></tr>`;
+  const soon = schools.filter(s=>["expiring","expired"].includes(schoolStatus(s)))
+    .sort((a,b)=>new Date(a.subscription_until)-new Date(b.subscription_until));
+  const offline = devices.filter(d=>!isOnline(d));
+  let html = "";
+  if (soon.length) html += `<h3 style="margin-top:6px">اشتراكات تحتاج تجديدًا</h3>` + soon.map(s=>{
+    const st = schoolStatus(s);
+    return `<div class="row" style="padding:9px 0;border-bottom:1px solid #EFF1F7">
+      <span style="flex:1;cursor:pointer" onclick="openSchool('${s.id}')"><b>${esc(s.name)}</b></span>
+      <span class="mono muted" dir="ltr">${s.subscription_until||"—"}</span>
+      <span class="pill ${st==="expired"?"r":"a"}">${st==="expired"?"منتهٍ":"ينتهي قريبًا"}</span></div>`;
   }).join("");
+  if (offline.length) html += `<h3 style="margin-top:16px">أجهزة منقطعة (أكثر من 24 ساعة)</h3>` + offline.slice(0,10).map(d=>{
+    const s = schools.find(x=>x.id===d.school_id);
+    return `<div class="row" style="padding:9px 0;border-bottom:1px solid #EFF1F7">
+      <span style="flex:1">${esc(s?.name||"?")} — ${esc(d.name)}</span>
+      <span class="mono muted" dir="ltr">${fmt(d.last_seen_at)}</span></div>`;
+  }).join("");
+  document.getElementById("attention").innerHTML = html || '<p class="muted">كل شيء على ما يرام ✓</p>';
 }
 
+// ─── Schools list ─────────────────────────────────────────────────────────
+const FILTERS = { all:"الكل", active:"نشطة", expiring:"تنتهي قريبًا", expired:"منتهية", stopped:"موقوفة" };
+function renderSchools() {
+  document.getElementById("schoolChips").innerHTML = Object.entries(FILTERS).map(([k,v])=>{
+    const n = k==="all" ? schools.length : schools.filter(s=>schoolStatus(s)===k).length;
+    return `<button class="chip ${filter===k?"on":""}" onclick="setFilter('${k}')">${v} <span class="mono">${n}</span></button>`;
+  }).join("");
+  const q = (document.getElementById("search").value||"").trim();
+  const rows = schools
+    .filter(s=>filter==="all" || schoolStatus(s)===filter)
+    .filter(s=>!q || s.name.includes(q));
+  const statusPill = { active:'<span class="pill g">نشطة</span>', expiring:'<span class="pill a">تنتهي قريبًا</span>', expired:'<span class="pill r">منتهٍ</span>', stopped:'<span class="pill r">موقوفة</span>' };
+  document.getElementById("schoolsBody").innerHTML = rows.map(s=>{
+    const fc = freeCodes(s.id);
+    return `<tr class="clickable" onclick="openSchool('${s.id}')">
+      <td><b>${esc(s.name)}</b></td>
+      <td>${s.plan==="full"?"كامل":"أساسي"}</td>
+      <td class="mono" dir="ltr">${s.subscription_until||"—"}</td>
+      <td>${statusPill[schoolStatus(s)]}</td>
+      <td class="mono">${deviceCount(s.id)}</td>
+      <td>${fc.length?`<code>${fc[0]}</code>`:'<span class="muted">—</span>'}</td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="6" class="muted" style="padding:24px;text-align:center">لا نتائج</td></tr>`;
+}
+function setFilter(k){ filter=k; renderSchools(); }
+
+function openNewSchool() {
+  const name = prompt("اسم المدرسة الجديدة:");
+  if (!name || !name.trim()) return;
+  db.rpc("create_school_with_code", { p_name:name.trim(), p_plan:"basic", p_until:null }).then(async ({data,error})=>{
+    if (error) return show("msg","فشل: "+error.message, true);
+    show("msg", `✓ أُنشئت — رمز التفعيل: ${data?.[0]?.activation_code}`);
+    await loadAll(); renderSchools(); renderOverview();
+  });
+}
+
+// ─── School detail ──────────────────────────────────────────────────────────
+let cur = null, cfg = { schedules:[] }, cfgVersion = 0, curSched = 0;
+
+async function openSchool(id) {
+  cur = schools.find(s=>s.id===id);
+  if (!cur) return;
+  const [{data:conf}, {data:logs}, {data:cmds}] = await Promise.all([
+    db.from("school_configs").select("version,payload").eq("school_id",id).maybeSingle(),
+    db.from("device_logs").select("event_name,planned_at,executed_at,status").eq("school_id",id).order("planned_at",{ascending:false}).limit(30),
+    db.from("commands").select("id,type,payload,created_at,delivered_at").eq("school_id",id).order("id",{ascending:false}).limit(10),
+  ]);
+  cfgVersion = conf?.version||0;
+  cfg = conf?.payload && Array.isArray(conf.payload.schedules) ? conf.payload : { schedules:[] };
+  curSched = Math.max(0, cfg.schedules.findIndex(s=>s.isActive));
+  document.getElementById("app").hidden = true;
+  const el = document.getElementById("detail"); el.hidden = false;
+  el.dataset.logs = JSON.stringify(logs||[]);
+  el.dataset.cmds = JSON.stringify(cmds||[]);
+  renderDetail();
+}
+function backToList(){ document.getElementById("detail").hidden = true; document.getElementById("app").hidden = false; loadAll().then(()=>{ renderSchools(); renderOverview(); loadDevices(); }); }
+
+function renderDetail() {
+  const s = cur, st = schoolStatus(s);
+  const fc = freeCodes(s.id);
+  const myDevices = devices.filter(d=>d.school_id===s.id);
+  const myInvoices = invoices.filter(i=>i.school_id===s.id);
+  const logs = JSON.parse(document.getElementById("detail").dataset.logs||"[]");
+  const cmds = JSON.parse(document.getElementById("detail").dataset.cmds||"[]");
+  const statusPill = { active:'<span class="pill g">نشطة</span>', expiring:'<span class="pill a">تنتهي قريبًا</span>', expired:'<span class="pill r">منتهٍ</span>', stopped:'<span class="pill r">موقوفة</span>' };
+
+  document.getElementById("detail").innerHTML = `
+    <button class="back" onclick="backToList()">→ رجوع للمدارس</button>
+
+    <div class="card">
+      <div class="row" style="align-items:flex-start">
+        <div style="flex:1">
+          <div class="row"><h2 style="margin:0">${esc(s.name)}</h2> ${statusPill[st]}</div>
+          <div class="muted" style="margin-top:4px">مُنشأة ${fmt(s.created_at)}</div>
+        </div>
+        <button class="ghost sm" onclick="renameSchool()">تعديل الاسم</button>
+        <button class="ghost sm ${s.active?'danger':''}" onclick="toggleActive()">${s.active?"إيقاف المدرسة":"تفعيل المدرسة"}</button>
+        <button class="ghost sm danger" onclick="deleteSchool()">حذف</button>
+      </div>
+      <div class="row" style="margin-top:16px">
+        <label class="muted">الخطة</label>
+        <select onchange="patchSchool({plan:this.value})">
+          <option value="basic" ${s.plan==="basic"?"selected":""}>أساسي</option>
+          <option value="full" ${s.plan==="full"?"selected":""}>كامل</option></select>
+        <label class="muted">الاشتراك حتى</label>
+        <input type="date" value="${s.subscription_until||""}" onchange="patchSchool({subscription_until:this.value||null})">
+        <span style="flex:1"></span>
+        <label class="muted">رموز التفعيل الحرة</label>
+        ${fc.length?fc.map(c=>`<code onclick="copyCode('${c}')" title="نسخ" style="cursor:pointer">${c} ⧉</code>`).join(" "):'<span class="muted">—</span>'}
+        <button class="ghost sm" onclick="newCode()">+ رمز</button>
+      </div>
+    </div>
+
+    <!-- Remote schedule editor -->
+    <div class="card">
+      <div class="row" style="margin-bottom:12px">
+        <h2 style="flex:1;margin:0">الجداول — تحكم عن بُعد</h2>
+        <button class="ghost sm" onclick="addSchedule()">+ جدول</button>
+        <button class="primary" onclick="publishConfig()">💾 حفظ ونشر للتابلت</button>
+      </div>
+      <div class="row" id="schedPills" style="margin-bottom:12px"></div>
+      <div id="schedMeta"></div>
+      <div style="overflow-x:auto">
+        <table id="eventsTbl"><thead><tr><th>الوقت</th><th>الاسم</th><th>المدة</th><th>الأيام</th><th>النغمة</th><th>الصوت</th><th></th></tr></thead><tbody></tbody></table>
+      </div>
+      <button class="ghost sm" style="margin-top:10px" onclick="addEvent()">+ إضافة حدث</button>
+      <p class="muted">بعد الحفظ يسحب التابلت الجدول خلال ≤ 5 دقائق (أو فورًا بزر "مزامنة الآن").</p>
+    </div>
+
+    <div class="grid2">
+      <!-- Remote control -->
+      <div class="card">
+        <h3>تحكم فوري عن بُعد</h3>
+        <textarea id="annText" rows="2" placeholder="نص النداء (يُنطق بالعربية على المكبرات)…" style="width:100%"></textarea>
+        <div class="row" style="margin-top:10px">
+          <button class="primary" onclick="remoteAnnounce()">📢 إرسال النداء</button>
+          <button class="ghost" onclick="remoteBell()">🔔 جرس الآن</button>
+        </div>
+        <h3 style="margin-top:18px">آخر الأوامر</h3>
+        ${cmds.length?cmds.map(c=>`<div class="row" style="padding:7px 0;border-bottom:1px solid #EFF1F7">
+          <span style="flex:1">${c.type==="bell"?"🔔 جرس":"📢 "+esc(c.payload?.text||"")}</span>
+          <span class="${c.delivered_at?"ok-txt":"warn-txt"}" style="font-size:13px">${c.delivered_at?"سُلّم ✓":"بانتظار التابلت…"}</span></div>`).join(""):'<p class="muted">لا أوامر بعد</p>'}
+      </div>
+
+      <!-- Devices + logs -->
+      <div class="card">
+        <h3>الأجهزة (${myDevices.length})</h3>
+        ${myDevices.length?myDevices.map(d=>`<div class="row" style="padding:7px 0;border-bottom:1px solid #EFF1F7">
+          <span style="width:9px;height:9px;border-radius:50%;background:${isOnline(d)?"var(--green)":"#C9CFCB"}"></span>
+          <span style="flex:1">${esc(d.name)} <span class="muted mono">${esc(d.app_version||"")}</span></span>
+          <span class="mono muted" dir="ltr" style="font-size:12px">${fmt(d.last_seen_at)}</span>
+          <button class="ghost sm danger" onclick="removeDevice('${d.id}')">فصل</button></div>`).join(""):'<p class="muted">لا أجهزة مرتبطة بعد</p>'}
+        <h3 style="margin-top:18px">آخر السجلّات</h3>
+        <div style="max-height:220px;overflow-y:auto">
+        ${logs.length?logs.map(l=>{
+          const cls = l.status==="EXECUTED"?"ok-txt":l.status==="SILENCED"?"warn-txt":"bad-txt";
+          return `<div class="row" style="padding:6px 0;border-bottom:1px solid #EFF1F7;font-size:13px">
+            <span style="flex:1">${esc(l.event_name)}</span>
+            <span class="mono muted" dir="ltr">${fmt(l.planned_at)}</span>
+            <span class="${cls}">${l.status}</span></div>`;
+        }).join(""):'<p class="muted">لا سجل بعد</p>'}
+        </div>
+      </div>
+    </div>
+
+    <!-- Invoices -->
+    <div class="card">
+      <div class="row" style="margin-bottom:12px">
+        <h3 style="flex:1;margin:0">الفواتير</h3>
+        <input id="dAmount" type="number" placeholder="المبلغ" style="width:100px">
+        <select id="dMonths"><option value="12">سنة</option><option value="6">6 أشهر</option><option value="3">3 أشهر</option><option value="1">شهر</option></select>
+        <button class="primary sm" onclick="createInvoiceFor()">+ فاتورة</button>
+      </div>
+      <table><thead><tr><th>#</th><th>المبلغ</th><th>المدة</th><th>الحالة</th><th>أُنشئت</th><th></th></tr></thead>
+      <tbody>${myInvoices.map(inv=>{
+        const sp = inv.status==="paid"?'<span class="pill g">مدفوعة</span>':inv.status==="cancelled"?'<span class="muted">ملغاة</span>':'<span class="pill a">معلّقة</span>';
+        const act = inv.status==="pending"?`<button class="ghost sm" onclick="payInvoice(${inv.id})">✓ تحصيل</button> <button class="ghost sm danger" onclick="cancelInvoice(${inv.id})">إلغاء</button>`:"";
+        return `<tr><td>${inv.id}</td><td class="mono" dir="ltr">${inv.amount} ${inv.currency}</td><td>${inv.period_months} شهر</td><td>${sp}</td><td class="mono" dir="ltr">${fmt(inv.created_at)}</td><td>${act}</td></tr>`;
+      }).join("")||'<tr><td colspan="6" class="muted">لا فواتير</td></tr>'}</tbody></table>
+    </div>
+  `;
+  renderSchedPills();
+}
+
+// ── School patch actions ──
+async function patchSchool(fields) {
+  const { error } = await db.from("schools").update(fields).eq("id", cur.id);
+  if (error) return show("msg","فشل: "+error.message, true);
+  Object.assign(cur, fields); await loadAll(); cur = schools.find(s=>s.id===cur.id); renderDetail();
+  show("msg","✓ حُدّثت");
+}
+function renameSchool(){ const n=prompt("اسم المدرسة:",cur.name); if(n&&n.trim()) patchSchool({name:n.trim()}); }
+function toggleActive(){ patchSchool({active:!cur.active}); }
+async function deleteSchool(){ if(!confirm(`حذف "${cur.name}" نهائيًا بكل بياناتها؟`))return;
+  const {error}=await db.from("schools").delete().eq("id",cur.id);
+  if(error) return show("msg","فشل: "+error.message,true);
+  show("msg","✓ حُذفت"); backToList(); }
+async function newCode(){ const {data,error}=await db.rpc("new_activation_code",{p_school:cur.id});
+  if(error) return show("msg","فشل: "+error.message,true);
+  await loadAll(); renderDetail(); show("msg","✓ رمز جديد: "+data); }
+function copyCode(c){ navigator.clipboard?.writeText(c).then(()=>show("msg","✓ نُسخ الرمز: "+c)); }
+
+// ── Remote schedule editor ──
+function renderSchedPills() {
+  document.getElementById("schedPills").innerHTML = cfg.schedules.map((s,i)=>
+    `<button class="sched-pill ${i===curSched?"active":""}" onclick="pickSched(${i})">${esc(s.name)}${s.isActive?" ✓":""}</button>`).join("")
+    || '<span class="muted">لا جداول — أضف جدولًا</span>';
+  renderSchedMeta(); renderEvents();
+}
+function pickSched(i){ curSched=i; renderSchedPills(); }
+function renderSchedMeta() {
+  const s = cfg.schedules[curSched];
+  const el = document.getElementById("schedMeta");
+  if (!s) { el.innerHTML=""; return; }
+  el.innerHTML = `<div class="row subtle" style="margin-bottom:12px">
+    <label class="muted">الاسم</label><input value="${esc(s.name)}" onchange="cfg.schedules[${curSched}].name=this.value;renderSchedPills()" style="width:200px">
+    <label><input type="checkbox" ${s.isActive?"checked":""} onchange="setActiveSched(${curSched},this.checked)"> الجدول النشط</label>
+    <span style="flex:1"></span>
+    <button class="ghost sm danger" onclick="delSchedule(${curSched})">حذف الجدول</button></div>`;
+}
+function setActiveSched(i,on){ cfg.schedules.forEach((x,j)=>x.isActive=(on&&j===i)); renderSchedPills(); }
+function delSchedule(i){ if(cfg.schedules.length<=1)return show("msg","يجب إبقاء جدول واحد",true);
+  if(confirm("حذف "+cfg.schedules[i].name+"؟")){ cfg.schedules.splice(i,1); curSched=0; renderSchedPills(); } }
+function addSchedule(){ const n=prompt("اسم الجدول:","جدول جديد"); if(!n)return;
+  cfg.schedules.push({name:n,isActive:cfg.schedules.length===0,events:[]}); curSched=cfg.schedules.length-1; renderSchedPills(); }
+function addEvent(){ const s=cfg.schedules[curSched]; if(!s)return show("msg","أضف جدولًا أولًا",true);
+  s.events.push({name:"حدث جديد",startMinuteOfDay:420,durationMin:45,daysOfWeek:0b1001111,volume:1,enabled:true,sortOrder:0,soundKey:"bell1"}); renderEvents(); }
+function renderEvents() {
+  const s = cfg.schedules[curSched];
+  const body = document.querySelector("#eventsTbl tbody");
+  if (!s) { body.innerHTML=""; return; }
+  s.events.sort((a,b)=>a.startMinuteOfDay-b.startMinuteOfDay);
+  body.innerHTML = s.events.map((e,i)=>{
+    const t = String(Math.floor(e.startMinuteOfDay/60)).padStart(2,"0")+":"+String(e.startMinuteOfDay%60).padStart(2,"0");
+    const days = DAY_ORDER.map(bit=>`<label><input type="checkbox" ${(e.daysOfWeek&(1<<bit))?"checked":""} onchange="toggleDay(${i},${bit},this.checked)">${DAY_NAMES[bit]}</label>`).join("");
+    const sounds = Object.entries(SOUNDS).map(([k,v])=>`<option value="${k}" ${e.soundKey===k?"selected":""}>${v}</option>`).join("");
+    return `<tr>
+      <td><input type="time" value="${t}" onchange="setTime(${i},this.value)" style="width:120px"></td>
+      <td><input value="${esc(e.name)}" onchange="ev(${i},'name',this.value)"></td>
+      <td><input type="number" value="${e.durationMin??""}" onchange="ev(${i},'durationMin',this.value===''?null:+this.value)" style="width:70px"></td>
+      <td class="days">${days}</td>
+      <td><select onchange="ev(${i},'soundKey',this.value)">${sounds}</select></td>
+      <td><input type="number" value="${Math.round((e.volume??1)*100)}" onchange="ev(${i},'volume',Math.max(0,Math.min(100,+this.value||0))/100)" style="width:60px"> %</td>
+      <td><button class="ghost sm danger" onclick="delEvent(${i})">✕</button></td></tr>`;
+  }).join("") || '<tr><td colspan="7" class="muted">لا أحداث — أضف حدثًا</td></tr>';
+}
+function ev(i,k,v){ cfg.schedules[curSched].events[i][k]=v; }
+function setTime(i,v){ const [h,m]=v.split(":").map(Number); cfg.schedules[curSched].events[i].startMinuteOfDay=h*60+m; renderEvents(); }
+function toggleDay(i,bit,on){ const e=cfg.schedules[curSched].events[i]; e.daysOfWeek = on ? (e.daysOfWeek|(1<<bit)) : (e.daysOfWeek&~(1<<bit)); }
+function delEvent(i){ cfg.schedules[curSched].events.splice(i,1); renderEvents(); }
+
+async function publishConfig() {
+  if (cfg.schedules.length && !cfg.schedules.some(s=>s.isActive)) cfg.schedules[0].isActive=true;
+  const { error } = await db.from("school_configs")
+    .update({ payload:cfg, version:cfgVersion+1, updated_at:new Date().toISOString() })
+    .eq("school_id", cur.id);
+  if (error) return show("msg","فشل النشر: "+error.message, true);
+  cfgVersion++; show("msg",`✓ نُشر الجدول (الإصدار ${cfgVersion}) — سيصل التابلت خلال دقائق`);
+}
+
+// ── Remote control ──
+async function remoteAnnounce() {
+  const text = document.getElementById("annText").value.trim();
+  if (!text) return show("msg","اكتب نص النداء",true);
+  const { error } = await db.from("commands").insert({ school_id:cur.id, type:"announce", payload:{text,delay:0} });
+  if (error) return show("msg","فشل: "+error.message,true);
+  document.getElementById("annText").value=""; await refreshCmds(); show("msg","✓ أُرسل النداء");
+}
+async function remoteBell() {
+  const { error } = await db.from("commands").insert({ school_id:cur.id, type:"bell", payload:{} });
+  if (error) return show("msg","فشل: "+error.message,true);
+  await refreshCmds(); show("msg","✓ أُرسل أمر الجرس");
+}
+async function refreshCmds() {
+  const { data } = await db.from("commands").select("id,type,payload,created_at,delivered_at").eq("school_id",cur.id).order("id",{ascending:false}).limit(10);
+  document.getElementById("detail").dataset.cmds = JSON.stringify(data||[]); renderDetail();
+}
+
+// ── Invoices (detail) ──
+async function createInvoiceFor() {
+  const amount = +document.getElementById("dAmount").value; if(!amount)return;
+  const months = +document.getElementById("dMonths").value;
+  const { error } = await db.from("invoices").insert({ school_id:cur.id, amount, period_months:months });
+  if (error) return show("msg","فشل: "+error.message,true);
+  await loadAll(); renderDetail(); show("msg","✓ أُنشئت الفاتورة");
+}
+async function payInvoice(id){ const {data,error}=await db.rpc("mark_invoice_paid",{p_invoice:id,p_ref:"manual"});
+  if(error) return show("msg","فشل: "+error.message,true);
+  await loadAll(); if(cur){cur=schools.find(s=>s.id===cur.id);renderDetail();} else {loadInvoices();}
+  show("msg","✓ حُصّلت — الاشتراك مُدّد حتى "+data); }
+async function cancelInvoice(id){ await db.from("invoices").update({status:"cancelled"}).eq("id",id);
+  await loadAll(); cur?renderDetail():loadInvoices(); }
+
+// ── Global invoices tab ──
+function loadInvoices() {
+  document.getElementById("invoicesBody").innerHTML = invoices.map(inv=>{
+    const s = schools.find(x=>x.id===inv.school_id);
+    const sp = inv.status==="paid"?'<span class="pill g">مدفوعة</span>':inv.status==="cancelled"?'<span class="muted">ملغاة</span>':'<span class="pill a">معلّقة</span>';
+    const act = inv.status==="pending"?`<button class="ghost sm" onclick="payInvoice(${inv.id})">✓ تحصيل</button> <button class="ghost sm danger" onclick="cancelInvoice(${inv.id})">إلغاء</button>`:"";
+    return `<tr><td>${inv.id}</td><td>${esc(s?.name||"?")}</td><td class="mono" dir="ltr">${inv.amount} ${inv.currency}</td><td>${inv.period_months} شهر</td><td>${sp}</td><td class="mono" dir="ltr">${fmt(inv.created_at)}</td><td>${act}</td></tr>`;
+  }).join("")||'<tr><td colspan="7" class="muted">لا فواتير</td></tr>';
+}
 async function createInvoice() {
-  const amount = +document.getElementById("invAmount").value;
-  if (!amount) return;
-  const { error } = await db.from("invoices").insert({
-    school_id: document.getElementById("invSchool").value,
-    amount,
-    period_months: +document.getElementById("invMonths").value,
-  });
-  show("msg", error ? "فشل: " + error.message : "✓ أُنشئت الفاتورة", !!error);
-  loadInvoices();
+  const amount=+document.getElementById("invAmount").value; if(!amount)return;
+  const { error } = await db.from("invoices").insert({ school_id:document.getElementById("invSchool").value, amount, period_months:+document.getElementById("invMonths").value });
+  if(error) return show("msg","فشل: "+error.message,true);
+  await loadAll(); loadInvoices(); show("msg","✓ أُنشئت الفاتورة");
 }
 
-async function payInvoice(id) {
-  const { data, error } = await db.rpc("mark_invoice_paid", { p_invoice: id, p_ref: "manual" });
-  if (error) return show("msg", "فشل: " + error.message, true);
-  show("msg", "✓ حُصّلت — الاشتراك مُدّد حتى " + data);
-  loadInvoices(); loadSchools();
+// ── Devices tab ──
+function loadDevices() {
+  document.getElementById("devicesBody").innerHTML = devices.slice().sort((a,b)=>new Date(b.last_seen_at||0)-new Date(a.last_seen_at||0)).map(d=>{
+    const s = schools.find(x=>x.id===d.school_id);
+    return `<tr><td>${esc(s?.name||"?")}</td><td>${esc(d.name)}</td><td class="mono" dir="ltr">${esc(d.app_version||"—")}</td>
+      <td class="mono ${isOnline(d)?"ok-txt":"bad-txt"}" dir="ltr">${fmt(d.last_seen_at)}</td>
+      <td><button class="ghost sm danger" onclick="removeDevice('${d.id}')">فصل</button></td></tr>`;
+  }).join("")||'<tr><td colspan="5" class="muted">لا أجهزة</td></tr>';
 }
+async function removeDevice(id){ if(!confirm("فصل هذا الجهاز؟ سيحتاج رمز تفعيل جديدًا."))return;
+  const {error}=await db.from("devices").delete().eq("id",id);
+  if(error) return show("msg","فشل: "+error.message,true);
+  await loadAll(); cur?renderDetail():loadDevices(); show("msg","✓ فُصل الجهاز"); }
 
-async function cancelInvoice(id) {
-  await db.from("invoices").update({ status: "cancelled" }).eq("id", id);
-  loadInvoices();
-}
-
-// ─── Devices ────────────────────────────────────────────────────────────────
-async function loadDevices() {
-  const { data } = await db.from("devices")
-    .select("id, school_id, name, app_version, last_seen_at")
-    .order("last_seen_at", { ascending: false });
-  document.getElementById("devicesBody").innerHTML = (data || []).map(d => {
-    const school = schools.find(s => s.id === d.school_id);
-    const stale = d.last_seen_at && (Date.now() - new Date(d.last_seen_at)) > 24 * 3600e3;
-    return `<tr><td>${esc(school?.name || "?")}</td><td>${esc(d.name)}</td>
-      <td dir="ltr">${esc(d.app_version || "—")}</td>
-      <td dir="ltr" class="${stale ? "bad-txt" : "ok-txt"}">${fmt(d.last_seen_at)}</td>
-      <td><button class="ghost danger" onclick="removeDevice('${d.id}')">فصل</button></td></tr>`;
-  }).join("");
-}
-
-async function removeDevice(id) {
-  if (!confirm("فصل هذا الجهاز؟ سيحتاج رمز تفعيل جديدًا.")) return;
-  await db.from("devices").delete().eq("id", id);
-  loadDevices();
-}
-
-// ─── UI ─────────────────────────────────────────────────────────────────────
+// ── Tabs ──
 function showTab(name) {
-  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
-  ["schools", "invoices", "devices"].forEach(t =>
-    document.getElementById("tab-" + t).style.display = t === name ? "block" : "none");
-  if (name === "schools") loadSchools();
-  if (name === "invoices") loadInvoices();
-  if (name === "devices") loadDevices();
+  currentTab = name;
+  document.getElementById("detail").hidden = true;
+  document.getElementById("app").hidden = false;
+  document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("active",b.dataset.tab===name));
+  ["overview","schools","devices","invoices"].forEach(t=>document.getElementById("tab-"+t).hidden = t!==name);
+  if(name==="overview") renderOverview();
+  if(name==="schools") renderSchools();
+  if(name==="devices") loadDevices();
+  if(name==="invoices") loadInvoices();
 }
-function show(id, text, isError) {
-  const el = document.getElementById(id);
-  el.textContent = text; el.className = "msg " + (isError ? "err" : "ok");
-  setTimeout(() => { el.className = "msg"; }, 8000);
-}
-function fmt(ts) { return ts ? new Date(ts).toLocaleString("ar-SA", { dateStyle: "short", timeStyle: "short" }) : "—"; }
-function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function show(id,text,isError){ const el=document.getElementById(id); el.textContent=text; el.className="msg "+(isError?"err":"ok"); setTimeout(()=>{el.className="msg";},6000); }
+function fmt(ts){ return ts?new Date(ts).toLocaleString("ar-SA",{dateStyle:"short",timeStyle:"short"}):"—"; }
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 
 init();
 </script>
