@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ابدأ تجربة الجرس المدرسي الذكي</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root { --green:#0F8A5F; --green-d:#0B6B4A; --green-c:#E6F4ED; --green-b:#BFE3D2;
+          --bg:#F1F4F2; --card:#fff; --text:#0F1A16; --muted:#5E6F66; --line:#E0E7E3; --red:#C0392B; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:'IBM Plex Sans Arabic',system-ui,"Segoe UI",Tahoma,sans-serif; background:var(--bg); color:var(--text); }
+  .mono { font-family:'IBM Plex Mono',monospace; }
+  .wrap { max-width:520px; margin:40px auto; padding:0 18px; }
+  .logo { display:inline-flex; align-items:center; justify-content:center; width:46px; height:46px; border-radius:13px; background:var(--green); color:#fff; font-weight:700; font-size:24px; }
+  h1 { font-size:24px; margin:14px 0 6px; }
+  .sub { color:var(--muted); margin:0 0 22px; line-height:1.7; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:20px; padding:26px; }
+  label { display:block; font-size:14px; font-weight:600; margin:14px 0 6px; }
+  label .opt { color:var(--muted); font-weight:400; }
+  input { width:100%; padding:13px; border:1px solid var(--line); border-radius:12px; font-size:15px; font-family:inherit; background:#fff; color:var(--text); }
+  input:focus { outline:none; border-color:var(--green); }
+  .hp { position:absolute; left:-9999px; }
+  button { width:100%; margin-top:22px; background:var(--green); color:#fff; border:0; padding:15px; border-radius:13px; font-size:16px; font-weight:600; font-family:inherit; cursor:pointer; transition:background .15s; }
+  button:hover { background:var(--green-d); } button:disabled { opacity:.6; cursor:default; }
+  .msg { margin-top:14px; padding:12px 16px; border-radius:12px; font-size:14px; display:none; }
+  .msg.err { background:#FDECEA; color:var(--red); display:block; }
+  .feat { display:flex; gap:10px; align-items:flex-start; margin:9px 0; color:var(--muted); font-size:14px; }
+  .feat b { color:var(--text); font-weight:600; }
+  .check { color:var(--green); font-weight:700; }
+  .done { text-align:center; }
+  .code { font-size:30px; letter-spacing:2px; background:var(--green-c); color:var(--green-d); padding:16px; border-radius:14px; margin:16px 0; border:1px dashed var(--green-b); }
+  .steps { text-align:right; background:#F7FAF8; border-radius:14px; padding:18px; margin-top:18px; line-height:2; font-size:14.5px; }
+  a.link { color:var(--green-d); font-weight:600; text-decoration:none; }
+  .muted { color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="logo">ج</span>
+  <h1>ابدأ تجربتك المجانية</h1>
+  <p class="sub">الجرس المدرسي الذكي — جدولة كاملة، مواقيت الصلاة والأذان، نداء ومكبّرات، ولوحة تحكم سحابية. جرّبه <b>14 يومًا مجانًا</b> دون أي التزام.</p>
+
+  <div class="card" id="formCard">
+    <div class="feat"><span class="check">✓</span><span><b>تشغيل خلال دقائق</b> — ثبّت التطبيق على تابلت وأدخل رمز التفعيل.</span></div>
+    <div class="feat"><span class="check">✓</span><span><b>يعمل دون إنترنت</b> — الجرس يرنّ محليًا حتى عند انقطاع الشبكة.</span></div>
+    <div class="feat"><span class="check">✓</span><span><b>تحكّم عن بُعد</b> — عدّل الجداول وأرسل النداءات من أي مكان.</span></div>
+    <hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
+
+    <label>اسم المدرسة</label>
+    <input id="name" placeholder="مثال: مدارس الرياض الأهلية" autocomplete="organization">
+    <label>البريد الإلكتروني</label>
+    <input id="email" type="email" dir="ltr" placeholder="school@example.com" autocomplete="email">
+    <label>رقم الجوال <span class="opt">(اختياري)</span></label>
+    <input id="phone" type="tel" dir="ltr" placeholder="05xxxxxxxx" autocomplete="tel">
+    <label>كلمة مرور لوحة المدرسة <span class="opt">(اختياري — لإنشاء حساب دخول فورًا)</span></label>
+    <input id="password" type="password" dir="ltr" placeholder="6 أحرف على الأقل" autocomplete="new-password">
+    <input class="hp" id="website" tabindex="-1" autocomplete="off" placeholder="Website">
+
+    <button id="submit" onclick="submitForm()">ابدأ التجربة المجانية</button>
+    <div class="msg" id="msg"></div>
+    <p class="muted" style="text-align:center;margin-top:14px">لديك حساب؟ <a class="link" href="./index.html">تسجيل الدخول</a></p>
+  </div>
+
+  <div class="card done" id="doneCard" style="display:none">
+    <div class="logo" style="margin-bottom:8px">✓</div>
+    <h1 style="font-size:22px">تم إنشاء حسابك التجريبي 🎉</h1>
+    <p class="sub" style="margin-bottom:0">رمز التفعيل الخاص بمدرستك:</p>
+    <div class="code mono" id="doneCode">—</div>
+    <div class="steps">
+      <b>الخطوات التالية:</b><br>
+      1. ثبّت تطبيق «الجرس المدرسي» على تابلت أندرويد.<br>
+      2. افتح: الإعدادات ← الربط السحابي، وأدخل الرمز أعلاه.<br>
+      3. وصّل التابلت بمكبّر الصوت وارفع مستوى الصوت.<br>
+      <span id="acctLine"></span>
+    </div>
+    <p class="muted" id="trialLine" style="margin-top:16px"></p>
+    <p class="muted">احتفظ برمز التفعيل. للمساعدة تواصل مع مزوّد الخدمة.</p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
+<script>
+const SUPABASE_URL = "https://tcdknoalnynnbuvlozwy.supabase.co";
+const SUPABASE_KEY = "sb_publishable_D0YQfRkraujKgNEVpSNKhw_YMvm2oB7";
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+async function submitForm() {
+  const name = val("name"), email = val("email"), phone = val("phone"), password = val("password");
+  if (name.length < 2) return err("أدخل اسم المدرسة");
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return err("أدخل بريدًا إلكترونيًا صحيحًا");
+  if (password && password.length < 6) return err("كلمة المرور 6 أحرف على الأقل");
+  const btn = document.getElementById("submit");
+  btn.disabled = true; btn.textContent = "… جارٍ الإنشاء";
+  const { data, error } = await db.functions.invoke("signup", {
+    body: { name, contactEmail: email, contactPhone: phone, password, website: val("website") },
+  });
+  const e = error || data?.error;
+  if (e) { btn.disabled = false; btn.textContent = "ابدأ التجربة المجانية"; return err(typeof e === "string" ? e : (data?.error || e.message || "تعذّر الإنشاء")); }
+  document.getElementById("formCard").style.display = "none";
+  document.getElementById("doneCard").style.display = "block";
+  document.getElementById("doneCode").textContent = data.activationCode;
+  document.getElementById("trialLine").textContent = "فترتك التجريبية سارية حتى " + data.trialUntil + ".";
+  document.getElementById("acctLine").innerHTML = data.account
+    ? `4. ادخل <a class="link" href="./index.html">لوحة المدرسة</a> ببريدك وكلمة المرور التي اخترتها.`
+    : `4. لإنشاء حساب لوحة المدرسة تواصل مع مزوّد الخدمة.`;
+  window.scrollTo(0, 0);
+}
+function val(id) { return document.getElementById(id).value.trim(); }
+function err(t) { const m = document.getElementById("msg"); m.textContent = t; m.className = "msg err"; }
+</script>
+</body>
+</html>

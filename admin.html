@@ -63,6 +63,11 @@
   .pill.g { background:var(--green-bg); color:var(--green); }
   .pill.a { background:var(--amber-bg); color:var(--amber); }
   .pill.r { background:#FDECEA; color:var(--red); }
+  .badge { display:inline-block; min-width:18px; height:18px; line-height:18px; padding:0 5px; border-radius:999px; background:var(--red); color:#fff; font-size:11px; font-weight:700; text-align:center; margin-inline-start:4px; }
+  .noti { display:flex; gap:12px; align-items:flex-start; padding:12px 4px; border-bottom:1px solid #EFF1F7; }
+  .noti .dot { width:9px; height:9px; border-radius:50%; margin-top:6px; flex:none; }
+  .noti.info .dot { background:var(--navy); } .noti.warn .dot { background:var(--amber); } .noti.urgent .dot { background:var(--red); }
+  .noti.read { opacity:.55; }
   /* detail */
   .back { background:none; border:0; color:var(--navy-d); font-family:inherit; font-size:15px; cursor:pointer; padding:6px 0; display:inline-flex; align-items:center; gap:8px; }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
@@ -98,6 +103,7 @@
       <button data-tab="overview" class="active" onclick="showTab('overview')">📊 نظرة عامة</button>
       <button data-tab="schools" onclick="showTab('schools')">🏫 المدارس</button>
       <button data-tab="devices" onclick="showTab('devices')">📱 الأجهزة</button>
+      <button data-tab="alerts" onclick="showTab('alerts')">🔔 التنبيهات <span id="alertsBadge" class="badge" hidden></span></button>
       <button data-tab="invoices" onclick="showTab('invoices')">🧾 الفواتير</button>
       <button data-tab="plans" onclick="showTab('plans')">📦 الباقات</button>
       <button data-tab="audit" onclick="showTab('audit')">📜 سجل العمليات</button>
@@ -143,6 +149,20 @@
         </div>
         <table><thead><tr><th>المدرسة</th><th>الجهاز</th><th>الإصدار</th><th>آخر ظهور</th><th></th></tr></thead>
         <tbody id="devicesBody"></tbody></table>
+      </div>
+    </section>
+
+    <!-- Alerts / notifications -->
+    <section id="tab-alerts" hidden>
+      <div class="card">
+        <div class="row" style="margin-bottom:14px">
+          <h2 style="flex:1;margin:0">التنبيهات</h2>
+          <select id="alFilter" onchange="drawAlerts()">
+            <option value="new">غير المقروءة</option><option value="all">الكل</option>
+          </select>
+          <button class="ghost" onclick="generateAlerts()">↻ توليد الآن</button>
+        </div>
+        <div id="alertsBody"><p class="muted">…</p></div>
       </div>
     </section>
 
@@ -228,6 +248,7 @@ async function init() {
   document.getElementById("app").hidden = false;
   document.getElementById("logoutBtn").hidden = false;
   await loadAll();
+  loadNotifCount();
   showTab("overview");
 }
 document.getElementById("logoutBtn").onclick = async () => { await db.auth.signOut(); location.reload(); };
@@ -713,10 +734,11 @@ function showTab(name) {
   document.getElementById("detail").hidden = true;
   document.getElementById("app").hidden = false;
   document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("active",b.dataset.tab===name));
-  ["overview","schools","devices","invoices","plans","audit"].forEach(t=>document.getElementById("tab-"+t).hidden = t!==name);
+  ["overview","schools","devices","alerts","invoices","plans","audit"].forEach(t=>document.getElementById("tab-"+t).hidden = t!==name);
   if(name==="overview") renderOverview();
   if(name==="schools") renderSchools();
   if(name==="devices") loadDevices();
+  if(name==="alerts") renderAlerts();
   if(name==="invoices") loadInvoices();
   if(name==="plans") renderPlans();
   if(name==="audit") renderAudit();
@@ -782,6 +804,59 @@ function downloadCSV(filename, head, rows) {
 }
 
 // ─── Plans management ─────────────────────────────────────────────────────
+// ── Alerts / notifications ──
+let NOTIFS = null;   // null = table missing (migration 0008 not applied)
+async function loadNotifCount() {
+  const { count, error } = await db.from("notifications").select("id",{count:"exact",head:true}).eq("status","new");
+  const badge = document.getElementById("alertsBadge");
+  if (error || !count) { badge.hidden = true; return; }
+  badge.hidden = false; badge.textContent = count;
+}
+async function renderAlerts() {
+  const box = document.getElementById("alertsBody");
+  const { data, error } = await db.from("notifications").select("id,kind,school_id,title,body,severity,status,created_at").order("created_at",{ascending:false}).limit(300);
+  if (error) {
+    NOTIFS = null;
+    box.innerHTML = `<p class="muted">لتفعيل التنبيهات طبّق الهجرة <code>0008_alerts_onboarding</code> وانشر دالة <code>alerts</code>، ثم اضغط "توليد الآن".<br>
+      حتى ذلك الحين تظهر التنبيهات العاجلة في <a onclick="showTab('overview')" style="color:var(--navy-d);cursor:pointer">نظرة عامة</a>.</p>`;
+    return;
+  }
+  NOTIFS = data || [];
+  drawAlerts();
+}
+function drawAlerts() {
+  if (NOTIFS === null) return;
+  const mode = document.getElementById("alFilter").value;
+  const rows = NOTIFS.filter(n=> mode==="all" || n.status==="new");
+  const box = document.getElementById("alertsBody");
+  box.innerHTML = rows.length ? rows.map(n=>`
+    <div class="noti ${esc(n.severity)} ${n.status==="read"?"read":""}">
+      <span class="dot"></span>
+      <div style="flex:1">
+        <div><b>${esc(n.title)}</b></div>
+        <div class="muted">${esc(n.body||"")}</div>
+        <div class="mono muted" dir="ltr" style="font-size:12px;margin-top:2px">${fmt(n.created_at)}</div>
+      </div>
+      ${n.school_id?`<button class="ghost sm" onclick="openSchool('${n.school_id}')">فتح المدرسة</button>`:""}
+      ${n.status==="new"?`<button class="ghost sm" onclick="markNotif(${n.id})">تمّت</button>`:""}
+    </div>`).join("")
+    : '<p class="muted">لا تنبيهات ✓</p>';
+}
+async function generateAlerts() {
+  show("msg","… جارٍ فحص الاشتراكات والأجهزة");
+  const { data, error } = await db.functions.invoke("alerts", { body:{} });
+  const e = error || data?.error;
+  if (e) return show("msg","تعذّر التوليد — تأكد من نشر دالة alerts. "+(data?.error||e.message||""), true);
+  await renderAlerts(); await loadNotifCount();
+  show("msg",`✓ اكتمل الفحص — ${data.created||0} تنبيه جديد`);
+}
+async function markNotif(id) {
+  const { error } = await db.from("notifications").update({ status:"read" }).eq("id", id);
+  if (error) return show("msg","فشل: "+error.message, true);
+  const n = NOTIFS.find(x=>x.id===id); if (n) n.status="read";
+  drawAlerts(); loadNotifCount();
+}
+
 let editingPlan = null;   // key being edited, "" for new, null = form hidden
 function renderPlans() {
   const box = document.getElementById("plansBody");
