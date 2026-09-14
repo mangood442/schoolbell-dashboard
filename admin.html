@@ -104,9 +104,15 @@
     <!-- Overview -->
     <section id="tab-overview">
       <div class="kpis" id="kpis"></div>
-      <div class="card" style="margin-top:18px">
-        <h2>يحتاج انتباهك</h2>
-        <div id="attention"></div>
+      <div class="grid2" style="margin-top:18px">
+        <div class="card" style="margin:0">
+          <h2>الإيرادات</h2>
+          <div id="revenue"></div>
+        </div>
+        <div class="card" style="margin:0">
+          <h2>يحتاج انتباهك</h2>
+          <div id="attention"></div>
+        </div>
       </div>
     </section>
 
@@ -248,6 +254,17 @@ function renderOverview() {
       <span class="mono muted" dir="ltr">${fmt(d.last_seen_at)}</span></div>`;
   }).join("");
   document.getElementById("attention").innerHTML = html || '<p class="muted">كل شيء على ما يرام ✓</p>';
+
+  // Revenue breakdown
+  const paid = invoices.filter(i=>i.status==="paid" && i.paid_at);
+  const thisMonth = paid.filter(i=>new Date(i.paid_at).getMonth()===m && new Date(i.paid_at).getFullYear()===y).reduce((a,i)=>a+Number(i.amount||0),0);
+  const thisYear = paid.filter(i=>new Date(i.paid_at).getFullYear()===y).reduce((a,i)=>a+Number(i.amount||0),0);
+  const pending = invoices.filter(i=>i.status==="pending").reduce((a,i)=>a+Number(i.amount||0),0);
+  const rev = (n)=>n.toLocaleString("ar")+" ر.س";
+  document.getElementById("revenue").innerHTML = `
+    <div class="row" style="padding:9px 0;border-bottom:1px solid #EFF1F7"><span style="flex:1" class="muted">محصّل هذا الشهر</span><b class="mono">${rev(thisMonth)}</b></div>
+    <div class="row" style="padding:9px 0;border-bottom:1px solid #EFF1F7"><span style="flex:1" class="muted">محصّل هذه السنة</span><b class="mono">${rev(thisYear)}</b></div>
+    <div class="row" style="padding:9px 0"><span style="flex:1" class="muted">فواتير معلّقة</span><b class="mono warn-txt">${rev(pending)}</b></div>`;
 }
 
 // ─── Schools list ─────────────────────────────────────────────────────────
@@ -304,7 +321,51 @@ async function openSchool(id) {
   const el = document.getElementById("detail"); el.hidden = false;
   el.dataset.logs = JSON.stringify(logs||[]);
   el.dataset.cmds = JSON.stringify(cmds||[]);
+  el.dataset.users = "[]";
   renderDetail();
+  loadSchoolUsers();   // async — fills the accounts section when ready
+}
+
+async function loadSchoolUsers() {
+  if (!cur) return;
+  const { data, error } = await db.functions.invoke("admin-users", { body:{ action:"list", schoolId:cur.id } });
+  document.getElementById("detail").dataset.users = JSON.stringify((!error && data?.users) || []);
+  renderSchoolUsers();
+}
+function renderSchoolUsers() {
+  const box = document.getElementById("schoolUsers");
+  if (!box) return;
+  const users = JSON.parse(document.getElementById("detail").dataset.users||"[]");
+  box.innerHTML = users.length ? users.map(u=>`<div class="row" style="padding:8px 0;border-bottom:1px solid #EFF1F7">
+      <span style="flex:1" dir="ltr">${esc(u.email||"—")}</span>
+      <button class="ghost sm" onclick="resetSchoolUser('${u.id}')">تغيير كلمة المرور</button>
+      <button class="ghost sm danger" onclick="removeSchoolUser('${u.id}','${esc(u.email||"")}')">حذف</button>
+    </div>`).join("") : '<p class="muted">لا حسابات دخول بعد — أنشئ حسابًا لتسليمه للمدرسة.</p>';
+}
+async function createSchoolUser() {
+  const email = document.getElementById("suEmail").value.trim();
+  const pw = document.getElementById("suPass").value;
+  if (!email || pw.length < 6) return show("msg","أدخل بريدًا وكلمة مرور (6 أحرف على الأقل)", true);
+  show("msg","… جارٍ الإنشاء");
+  const { data, error } = await db.functions.invoke("admin-users", { body:{ action:"create", schoolId:cur.id, email, password:pw } });
+  const err = error || data?.error;
+  if (err) return show("msg","فشل: " + (data?.error || err.message || err), true);
+  document.getElementById("suEmail").value=""; document.getElementById("suPass").value="";
+  await loadSchoolUsers(); show("msg","✓ أُنشئ الحساب — سلّم بيانات الدخول للمدرسة");
+}
+async function resetSchoolUser(userId) {
+  const pw = prompt("كلمة المرور الجديدة (6 أحرف على الأقل):");
+  if (!pw || pw.length < 6) return;
+  const { data, error } = await db.functions.invoke("admin-users", { body:{ action:"reset", userId, password:pw } });
+  const err = error || data?.error;
+  show("msg", err ? "فشل: "+(data?.error||err.message||err) : "✓ غُيّرت كلمة المرور", !!err);
+}
+async function removeSchoolUser(userId, email) {
+  if (!confirm(`حذف حساب الدخول "${email}"؟`)) return;
+  const { data, error } = await db.functions.invoke("admin-users", { body:{ action:"remove", userId } });
+  const err = error || data?.error;
+  if (err) return show("msg","فشل: "+(data?.error||err.message||err), true);
+  await loadSchoolUsers(); show("msg","✓ حُذف الحساب");
 }
 function backToList(){ document.getElementById("detail").hidden = true; document.getElementById("app").hidden = false; loadAll().then(()=>{ renderSchools(); renderOverview(); loadDevices(); }); }
 
@@ -396,6 +457,18 @@ function renderDetail() {
       </div>
     </div>
 
+    <!-- School login accounts -->
+    <div class="card">
+      <div class="row" style="margin-bottom:12px">
+        <h3 style="flex:1;margin:0">حسابات دخول المدرسة</h3>
+        <input id="suEmail" type="email" placeholder="بريد المدرسة" dir="ltr" style="min-width:200px">
+        <input id="suPass" type="text" placeholder="كلمة المرور" dir="ltr" style="width:150px">
+        <button class="primary sm" onclick="createSchoolUser()">+ إنشاء حساب</button>
+      </div>
+      <div id="schoolUsers"><p class="muted">… جارٍ التحميل</p></div>
+      <p class="muted">يستخدم هذا الحساب للدخول إلى لوحة المدرسة وتطبيق المدير. لا حاجة لأوامر SQL بعد الآن.</p>
+    </div>
+
     <!-- Invoices -->
     <div class="card">
       <div class="row" style="margin-bottom:12px">
@@ -413,6 +486,7 @@ function renderDetail() {
     </div>
   `;
   renderSchedPills();
+  renderSchoolUsers();
 }
 
 // ── School patch actions ──
