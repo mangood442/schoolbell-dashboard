@@ -100,10 +100,12 @@
       <button data-tab="devices" onclick="showTab('devices')">📱 الأجهزة</button>
       <button data-tab="invoices" onclick="showTab('invoices')">🧾 الفواتير</button>
       <button data-tab="plans" onclick="showTab('plans')">📦 الباقات</button>
+      <button data-tab="audit" onclick="showTab('audit')">📜 سجل العمليات</button>
     </div>
 
     <!-- Overview -->
     <section id="tab-overview">
+      <div id="alertBanner"></div>
       <div class="kpis" id="kpis"></div>
       <div class="grid2" style="margin-top:18px">
         <div class="card" style="margin:0">
@@ -160,6 +162,14 @@
     <section id="tab-plans" hidden>
       <div id="plansBody"></div>
     </section>
+
+    <!-- Audit -->
+    <section id="tab-audit" hidden>
+      <div class="card">
+        <h2>سجل العمليات</h2>
+        <div id="auditBody"><p class="muted">…</p></div>
+      </div>
+    </section>
   </div>
 
   <!-- ── School detail view ── -->
@@ -180,7 +190,12 @@ const SOUNDS = { bell1:"جرس كهربائي", bell2:"جرس برونزي", bel
 const DAY_MS = 86400000;
 
 let schools = [], devices = [], invoices = [], codes = [], PLANS = null;
-let filter = "all", currentTab = "overview";
+let filter = "all", currentTab = "overview", actorId = null, AUDIT_OK = true;
+// Records a provider action. Silently no-ops until migration 0007 is applied.
+async function audit(action, schoolId, detail) {
+  try { await db.from("audit_log").insert({ actor:actorId, action, school_id:schoolId||null, detail:detail||null }); }
+  catch (_) {}
+}
 const PLAN_FALLBACK = [{key:"basic",name_ar:"أساسي"},{key:"full",name_ar:"كامل"}];
 function planList(){ return (PLANS && PLANS.length) ? PLANS : PLAN_FALLBACK; }
 function planName(key){ return (planList().find(p=>p.key===key)?.name_ar) || key || "—"; }
@@ -200,6 +215,7 @@ async function init() {
   if (!session) return;
   const { data: sa } = await db.from("super_admins").select("user_id").maybeSingle();
   if (!sa) return show("loginMsg", "هذا الحساب ليس مشرفًا عامًا.", true);
+  actorId = session.user.id;
   document.getElementById("login").hidden = true;
   document.getElementById("app").hidden = false;
   document.getElementById("logoutBtn").hidden = false;
@@ -235,6 +251,20 @@ function freeCodes(id){ return codes.filter(c=>c.school_id===id && !c.used_at).m
 
 // ─── Overview ───────────────────────────────────────────────────────────────
 function renderOverview() {
+  // Urgent alert banner: subscriptions expiring within 7 days or expired,
+  // and devices offline for more than 48 hours.
+  const nowMs = Date.now();
+  const urgentSubs = schools.filter(s=>{ const st=schoolStatus(s); if(st==="expired")return true;
+    return s.subscription_until && (new Date(s.subscription_until)-nowMs) < 7*DAY_MS && (new Date(s.subscription_until)-nowMs)>=0; });
+  const veryStale = devices.filter(d=>d.last_seen_at && (nowMs-new Date(d.last_seen_at)) > 2*DAY_MS);
+  const parts = [];
+  if (urgentSubs.length) parts.push(`${urgentSubs.length} اشتراك يحتاج تجديدًا عاجلًا`);
+  if (veryStale.length) parts.push(`${veryStale.length} جهاز منقطع أكثر من 48 ساعة`);
+  document.getElementById("alertBanner").innerHTML = parts.length
+    ? `<div class="card" style="background:#FDF0E8;border-color:#F0C9A8;margin-bottom:16px;cursor:pointer" onclick="showTab('schools')">
+        <b class="warn-txt">⚠️ تنبيه:</b> ${parts.join(" · ")} — <span class="muted">اضغط للمراجعة</span></div>`
+    : "";
+
   const active = schools.filter(s=>schoolStatus(s)!=="stopped" && schoolStatus(s)!=="expired").length;
   const online = devices.filter(isOnline).length;
   const now = new Date(), m = now.getMonth(), y = now.getFullYear();
@@ -310,6 +340,7 @@ function openNewSchool() {
   if (!name || !name.trim()) return;
   db.rpc("create_school_with_code", { p_name:name.trim(), p_plan:"basic", p_until:null }).then(async ({data,error})=>{
     if (error) return show("msg","فشل: "+error.message, true);
+    audit("school.create", data?.[0]?.school_id, esc(name.trim()));
     show("msg", `✓ أُنشئت — رمز التفعيل: ${data?.[0]?.activation_code}`);
     await loadAll(); renderSchools(); renderOverview();
   });
@@ -362,6 +393,7 @@ async function createSchoolUser() {
   const { data, error } = await db.functions.invoke("admin-users", { body:{ action:"create", schoolId:cur.id, email, password:pw } });
   const err = error || data?.error;
   if (err) return show("msg","فشل: " + (data?.error || err.message || err), true);
+  audit("account.create", cur.id, `${esc(cur.name)}: ${esc(email)}`);
   document.getElementById("suEmail").value=""; document.getElementById("suPass").value="";
   await loadSchoolUsers(); show("msg","✓ أُنشئ الحساب — سلّم بيانات الدخول للمدرسة");
 }
@@ -503,6 +535,8 @@ function renderDetail() {
 async function patchSchool(fields) {
   const { error } = await db.from("schools").update(fields).eq("id", cur.id);
   if (error) return show("msg","فشل: "+error.message, true);
+  const k = Object.keys(fields)[0];
+  audit("school."+k, cur.id, `${esc(cur.name)}: ${k}=${JSON.stringify(fields[k])}`);
   Object.assign(cur, fields); await loadAll(); cur = schools.find(s=>s.id===cur.id); renderDetail();
   show("msg","✓ حُدّثت");
 }
@@ -572,7 +606,8 @@ async function publishConfig() {
     .update({ payload:cfg, version:cfgVersion+1, updated_at:new Date().toISOString() })
     .eq("school_id", cur.id);
   if (error) return show("msg","فشل النشر: "+error.message, true);
-  cfgVersion++; show("msg",`✓ نُشر الجدول (الإصدار ${cfgVersion}) — سيصل التابلت خلال دقائق`);
+  cfgVersion++; audit("schedule.publish", cur.id, `${esc(cur.name)} — الإصدار ${cfgVersion}`);
+  show("msg",`✓ نُشر الجدول (الإصدار ${cfgVersion}) — سيصل التابلت خلال دقائق`);
 }
 
 // ── Remote control ──
@@ -581,11 +616,13 @@ async function remoteAnnounce() {
   if (!text) return show("msg","اكتب نص النداء",true);
   const { error } = await db.from("commands").insert({ school_id:cur.id, type:"announce", payload:{text,delay:0} });
   if (error) return show("msg","فشل: "+error.message,true);
+  audit("command.announce", cur.id, `${esc(cur.name)}: "${text.slice(0,40)}"`);
   document.getElementById("annText").value=""; await refreshCmds(); show("msg","✓ أُرسل النداء");
 }
 async function remoteBell() {
   const { error } = await db.from("commands").insert({ school_id:cur.id, type:"bell", payload:{} });
   if (error) return show("msg","فشل: "+error.message,true);
+  audit("command.bell", cur.id, esc(cur.name));
   await refreshCmds(); show("msg","✓ أُرسل أمر الجرس");
 }
 async function refreshCmds() {
@@ -603,6 +640,8 @@ async function createInvoiceFor() {
 }
 async function payInvoice(id){ const {data,error}=await db.rpc("mark_invoice_paid",{p_invoice:id,p_ref:"manual"});
   if(error) return show("msg","فشل: "+error.message,true);
+  const inv=invoices.find(i=>i.id===id);
+  audit("invoice.paid", inv?.school_id, `فاتورة #${id} — الاشتراك حتى ${data}`);
   await loadAll(); if(cur){cur=schools.find(s=>s.id===cur.id);renderDetail();} else {loadInvoices();}
   show("msg","✓ حُصّلت — الاشتراك مُدّد حتى "+data); }
 async function cancelInvoice(id){ await db.from("invoices").update({status:"cancelled"}).eq("id",id);
@@ -644,12 +683,31 @@ function showTab(name) {
   document.getElementById("detail").hidden = true;
   document.getElementById("app").hidden = false;
   document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("active",b.dataset.tab===name));
-  ["overview","schools","devices","invoices","plans"].forEach(t=>document.getElementById("tab-"+t).hidden = t!==name);
+  ["overview","schools","devices","invoices","plans","audit"].forEach(t=>document.getElementById("tab-"+t).hidden = t!==name);
   if(name==="overview") renderOverview();
   if(name==="schools") renderSchools();
   if(name==="devices") loadDevices();
   if(name==="invoices") loadInvoices();
   if(name==="plans") renderPlans();
+  if(name==="audit") renderAudit();
+}
+
+const AUDIT_LABELS = {
+  "school.create":"إنشاء مدرسة","school.plan":"تغيير الخطة","school.subscription_until":"تعديل الاشتراك",
+  "school.active":"تفعيل/إيقاف","school.name":"تعديل الاسم","schedule.publish":"نشر جدول",
+  "command.announce":"نداء عن بُعد","command.bell":"جرس عن بُعد","account.create":"إنشاء حساب دخول",
+  "invoice.paid":"تحصيل فاتورة",
+};
+async function renderAudit() {
+  const box = document.getElementById("auditBody");
+  const { data, error } = await db.from("audit_log").select("action,school_id,detail,created_at").order("created_at",{ascending:false}).limit(150);
+  if (error) { box.innerHTML = `<p class="muted">لتفعيل سجل العمليات طبّق الهجرة <code>0007_audit_log</code> ثم <code>supabase db push</code>.</p>`; return; }
+  box.innerHTML = `<table><thead><tr><th>العملية</th><th>التفاصيل</th><th>الوقت</th></tr></thead><tbody>${
+    (data||[]).map(r=>`<tr>
+      <td><span class="pill" style="background:var(--navy-container);color:var(--navy-d)">${AUDIT_LABELS[r.action]||r.action}</span></td>
+      <td>${esc(r.detail||"—")}</td>
+      <td class="mono muted" dir="ltr">${fmt(r.created_at)}</td></tr>`).join("")
+    || '<tr><td colspan="3" class="muted">لا عمليات مسجّلة بعد</td></tr>'}</tbody></table>`;
 }
 
 // ─── Plans management ─────────────────────────────────────────────────────
