@@ -99,6 +99,7 @@
       <button data-tab="schools" onclick="showTab('schools')">🏫 المدارس</button>
       <button data-tab="devices" onclick="showTab('devices')">📱 الأجهزة</button>
       <button data-tab="invoices" onclick="showTab('invoices')">🧾 الفواتير</button>
+      <button data-tab="plans" onclick="showTab('plans')">📦 الباقات</button>
     </div>
 
     <!-- Overview -->
@@ -154,6 +155,11 @@
         <tbody id="invoicesBody"></tbody></table>
       </div>
     </section>
+
+    <!-- Plans -->
+    <section id="tab-plans" hidden>
+      <div id="plansBody"></div>
+    </section>
   </div>
 
   <!-- ── School detail view ── -->
@@ -173,8 +179,12 @@ const DAY_ORDER = [6,0,1,2,3,4,5];                  // display Sun first
 const SOUNDS = { bell1:"جرس كهربائي", bell2:"جرس برونزي", bell3:"لحن ترحيبي", bell4:"دينغ دونغ", bell5:"غونغ هادئ" };
 const DAY_MS = 86400000;
 
-let schools = [], devices = [], invoices = [], codes = [];
+let schools = [], devices = [], invoices = [], codes = [], PLANS = null;
 let filter = "all", currentTab = "overview";
+const PLAN_FALLBACK = [{key:"basic",name_ar:"أساسي"},{key:"full",name_ar:"كامل"}];
+function planList(){ return (PLANS && PLANS.length) ? PLANS : PLAN_FALLBACK; }
+function planName(key){ return (planList().find(p=>p.key===key)?.name_ar) || key || "—"; }
+function planOptions(sel){ return planList().map(p=>`<option value="${esc(p.key)}" ${p.key===sel?"selected":""}>${esc(p.name_ar)}</option>`).join(""); }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────
 async function login() {
@@ -207,6 +217,8 @@ async function loadAll() {
     db.from("activation_codes").select("code, school_id, used_at"),
   ]);
   schools = a.data || []; devices = b.data || []; invoices = c.data || []; codes = d.data || [];
+  const p = await db.from("plans").select("*").order("sort_order");
+  PLANS = p.error ? null : (p.data || []);   // null = migration 0006 not applied yet
   document.getElementById("invSchool").innerHTML = schools.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join("");
 }
 function schoolStatus(s) {
@@ -283,7 +295,7 @@ function renderSchools() {
     const fc = freeCodes(s.id);
     return `<tr class="clickable" onclick="openSchool('${s.id}')">
       <td><b>${esc(s.name)}</b></td>
-      <td>${s.plan==="full"?"كامل":"أساسي"}</td>
+      <td>${esc(planName(s.plan))}</td>
       <td class="mono" dir="ltr">${s.subscription_until||"—"}</td>
       <td>${statusPill[schoolStatus(s)]}</td>
       <td class="mono">${deviceCount(s.id)}</td>
@@ -393,9 +405,7 @@ function renderDetail() {
       </div>
       <div class="row" style="margin-top:16px">
         <label class="muted">الخطة</label>
-        <select onchange="patchSchool({plan:this.value})">
-          <option value="basic" ${s.plan==="basic"?"selected":""}>أساسي</option>
-          <option value="full" ${s.plan==="full"?"selected":""}>كامل</option></select>
+        <select onchange="patchSchool({plan:this.value})">${planOptions(s.plan)}</select>
         <label class="muted">الاشتراك حتى</label>
         <input type="date" value="${s.subscription_until||""}" onchange="patchSchool({subscription_until:this.value||null})">
         <span style="flex:1"></span>
@@ -634,11 +644,85 @@ function showTab(name) {
   document.getElementById("detail").hidden = true;
   document.getElementById("app").hidden = false;
   document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("active",b.dataset.tab===name));
-  ["overview","schools","devices","invoices"].forEach(t=>document.getElementById("tab-"+t).hidden = t!==name);
+  ["overview","schools","devices","invoices","plans"].forEach(t=>document.getElementById("tab-"+t).hidden = t!==name);
   if(name==="overview") renderOverview();
   if(name==="schools") renderSchools();
   if(name==="devices") loadDevices();
   if(name==="invoices") loadInvoices();
+  if(name==="plans") renderPlans();
+}
+
+// ─── Plans management ─────────────────────────────────────────────────────
+let editingPlan = null;   // key being edited, "" for new, null = form hidden
+function renderPlans() {
+  const box = document.getElementById("plansBody");
+  if (PLANS === null) {
+    box.innerHTML = `<div class="card"><h2>الباقات</h2>
+      <p class="muted">لتفعيل إدارة الباقات طبّق الهجرة <code>0006_plans</code> ثم <code>supabase db push</code>.
+      حتى ذلك الحين تُستخدم الباقتان الافتراضيتان (أساسي/كامل).</p></div>`;
+    return;
+  }
+  const form = editingPlan !== null ? planForm() : "";
+  const rows = PLANS.map(p=>`<tr>
+      <td><b>${esc(p.name_ar)}</b> <code>${esc(p.key)}</code></td>
+      <td class="mono" dir="ltr">${Number(p.price).toLocaleString("ar")} ${esc(p.currency)}</td>
+      <td>${p.billing_months} شهر</td>
+      <td>${(p.features||[]).length} ميزة</td>
+      <td>${p.active?'<span class="pill g">مفعّلة</span>':'<span class="pill r">موقوفة</span>'}</td>
+      <td><button class="ghost sm" onclick="editPlan('${esc(p.key)}')">تعديل</button>
+          <button class="ghost sm danger" onclick="deletePlan('${esc(p.key)}')">حذف</button></td>
+    </tr>`).join("") || '<tr><td colspan="6" class="muted">لا باقات</td></tr>';
+  box.innerHTML = `
+    <div class="card">
+      <div class="row" style="margin-bottom:14px"><h2 style="flex:1;margin:0">الباقات</h2>
+        <button class="primary" onclick="editPlan('')">+ باقة جديدة</button></div>
+      <table><thead><tr><th>الباقة</th><th>السعر</th><th>المدة</th><th>المزايا</th><th>الحالة</th><th></th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    </div>
+    ${form}`;
+}
+function planForm() {
+  const p = editingPlan ? PLANS.find(x=>x.key===editingPlan) : null;
+  const isNew = !p;
+  return `<div class="card">
+    <h3>${isNew?"باقة جديدة":"تعديل: "+esc(p.name_ar)}</h3>
+    <div class="row" style="margin-bottom:10px">
+      <label class="muted">المفتاح</label><input id="pKey" value="${p?esc(p.key):""}" ${isNew?"":"disabled"} placeholder="مثال: premium" dir="ltr" style="width:130px">
+      <label class="muted">الاسم</label><input id="pName" value="${p?esc(p.name_ar):""}" placeholder="اسم الباقة" style="width:160px">
+      <label class="muted">السعر</label><input id="pPrice" type="number" value="${p?p.price:""}" style="width:100px">
+      <label class="muted">المدة (شهر)</label><input id="pMonths" type="number" value="${p?p.billing_months:12}" style="width:80px">
+      <label><input id="pActive" type="checkbox" ${!p||p.active?"checked":""}> مفعّلة</label>
+    </div>
+    <label class="muted">المزايا (سطر لكل ميزة)</label>
+    <textarea id="pFeatures" rows="5" style="width:100%;margin-top:6px">${p?(p.features||[]).map(esc).join("\n"):""}</textarea>
+    <div class="row" style="margin-top:12px">
+      <button class="primary" onclick="savePlan()">حفظ</button>
+      <button class="ghost" onclick="editingPlan=null;renderPlans()">إلغاء</button>
+    </div></div>`;
+}
+function editPlan(key){ editingPlan = key; renderPlans(); }
+async function savePlan() {
+  const key = document.getElementById("pKey").value.trim();
+  const name = document.getElementById("pName").value.trim();
+  if (!key || !name) return show("msg","المفتاح والاسم مطلوبان", true);
+  const rec = {
+    key, name_ar:name,
+    price: +document.getElementById("pPrice").value || 0,
+    billing_months: +document.getElementById("pMonths").value || 12,
+    active: document.getElementById("pActive").checked,
+    features: document.getElementById("pFeatures").value.split("\n").map(s=>s.trim()).filter(Boolean),
+    sort_order: (editingPlan && PLANS.find(p=>p.key===editingPlan)?.sort_order) || (PLANS.length+1),
+  };
+  const { error } = await db.from("plans").upsert(rec);
+  if (error) return show("msg","فشل: "+error.message, true);
+  editingPlan = null; await loadAll(); renderPlans(); show("msg","✓ حُفظت الباقة");
+}
+async function deletePlan(key) {
+  if (schools.some(s=>s.plan===key)) return show("msg","لا يمكن حذف باقة مستخدمة من مدارس", true);
+  if (!confirm(`حذف باقة "${planName(key)}"؟`)) return;
+  const { error } = await db.from("plans").delete().eq("key", key);
+  if (error) return show("msg","فشل: "+error.message, true);
+  await loadAll(); renderPlans(); show("msg","✓ حُذفت الباقة");
 }
 function show(id,text,isError){ const el=document.getElementById(id); el.textContent=text; el.className="msg "+(isError?"err":"ok"); setTimeout(()=>{el.className="msg";},6000); }
 function fmt(ts){ return ts?new Date(ts).toLocaleString("ar-SA",{dateStyle:"short",timeStyle:"short"}):"—"; }
