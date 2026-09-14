@@ -137,7 +137,10 @@
     <!-- Devices -->
     <section id="tab-devices" hidden>
       <div class="card">
-        <h2>كل الأجهزة</h2>
+        <div class="row" style="margin-bottom:14px">
+          <h2 style="flex:1;margin:0">كل الأجهزة</h2>
+          <div class="chips" id="deviceChips"></div>
+        </div>
         <table><thead><tr><th>المدرسة</th><th>الجهاز</th><th>الإصدار</th><th>آخر ظهور</th><th></th></tr></thead>
         <tbody id="devicesBody"></tbody></table>
       </div>
@@ -166,7 +169,12 @@
     <!-- Audit -->
     <section id="tab-audit" hidden>
       <div class="card">
-        <h2>سجل العمليات</h2>
+        <div class="row" style="margin-bottom:14px">
+          <h2 style="flex:1;margin:0">سجل العمليات</h2>
+          <select id="auAction" onchange="drawAudit()"><option value="">كل العمليات</option></select>
+          <input id="auSearch" placeholder="بحث في التفاصيل…" style="min-width:180px" oninput="drawAudit()">
+          <button class="ghost" onclick="exportAuditCSV()">⬇ تصدير CSV</button>
+        </div>
         <div id="auditBody"><p class="muted">…</p></div>
       </div>
     </section>
@@ -664,13 +672,35 @@ async function createInvoice() {
 }
 
 // ── Devices tab ──
+let deviceFilter = "all";
+const DEVICE_FILTERS = { all:"الكل", online:"متصلة", offline:"منقطعة" };
+function setDeviceFilter(k){ deviceFilter=k; loadDevices(); }
 function loadDevices() {
-  document.getElementById("devicesBody").innerHTML = devices.slice().sort((a,b)=>new Date(b.last_seen_at||0)-new Date(a.last_seen_at||0)).map(d=>{
+  document.getElementById("deviceChips").innerHTML = Object.entries(DEVICE_FILTERS).map(([k,v])=>{
+    const n = k==="all" ? devices.length : k==="online" ? devices.filter(isOnline).length : devices.filter(d=>!isOnline(d)).length;
+    return `<button class="chip ${deviceFilter===k?"on":""}" onclick="setDeviceFilter('${k}')">${v} <span class="mono">${n}</span></button>`;
+  }).join("");
+  const rows = devices.slice()
+    .filter(d=> deviceFilter==="all" || (deviceFilter==="online"?isOnline(d):!isOnline(d)))
+    .sort((a,b)=>new Date(b.last_seen_at||0)-new Date(a.last_seen_at||0));
+  document.getElementById("devicesBody").innerHTML = rows.map(d=>{
     const s = schools.find(x=>x.id===d.school_id);
-    return `<tr><td>${esc(s?.name||"?")}</td><td>${esc(d.name)}</td><td class="mono" dir="ltr">${esc(d.app_version||"—")}</td>
+    return `<tr><td>${esc(s?.name||"?")}</td>
+      <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${isOnline(d)?"var(--green)":"#C9CFCB"};margin-inline-end:6px"></span>${esc(d.name)}</td>
+      <td class="mono" dir="ltr">${esc(d.app_version||"—")}</td>
       <td class="mono ${isOnline(d)?"ok-txt":"bad-txt"}" dir="ltr">${fmt(d.last_seen_at)}</td>
-      <td><button class="ghost sm danger" onclick="removeDevice('${d.id}')">فصل</button></td></tr>`;
+      <td><button class="ghost sm" onclick="renameDevice('${d.id}')">تسمية</button>
+          <button class="ghost sm danger" onclick="removeDevice('${d.id}')">فصل</button></td></tr>`;
   }).join("")||'<tr><td colspan="5" class="muted">لا أجهزة</td></tr>';
+}
+async function renameDevice(id){
+  const d = devices.find(x=>x.id===id); if(!d) return;
+  const name = prompt("اسم الجهاز (مثال: مبنى أ — الطابق الأول):", d.name||"");
+  if(!name || !name.trim() || name.trim()===d.name) return;
+  const { error } = await db.from("devices").update({ name:name.trim() }).eq("id", id);
+  if(error) return show("msg","فشل: "+error.message, true);
+  audit("device.rename", d.school_id, `${esc(name.trim())}`);
+  await loadAll(); cur?renderDetail():loadDevices(); show("msg","✓ حُدّث اسم الجهاز");
 }
 async function removeDevice(id){ if(!confirm("فصل هذا الجهاز؟ سيحتاج رمز تفعيل جديدًا."))return;
   const {error}=await db.from("devices").delete().eq("id",id);
@@ -696,18 +726,59 @@ const AUDIT_LABELS = {
   "school.create":"إنشاء مدرسة","school.plan":"تغيير الخطة","school.subscription_until":"تعديل الاشتراك",
   "school.active":"تفعيل/إيقاف","school.name":"تعديل الاسم","schedule.publish":"نشر جدول",
   "command.announce":"نداء عن بُعد","command.bell":"جرس عن بُعد","account.create":"إنشاء حساب دخول",
-  "invoice.paid":"تحصيل فاتورة",
+  "invoice.paid":"تحصيل فاتورة","device.rename":"تسمية جهاز",
 };
+let AUDIT_ROWS = [];
 async function renderAudit() {
   const box = document.getElementById("auditBody");
-  const { data, error } = await db.from("audit_log").select("action,school_id,detail,created_at").order("created_at",{ascending:false}).limit(150);
-  if (error) { box.innerHTML = `<p class="muted">لتفعيل سجل العمليات طبّق الهجرة <code>0007_audit_log</code> ثم <code>supabase db push</code>.</p>`; return; }
-  box.innerHTML = `<table><thead><tr><th>العملية</th><th>التفاصيل</th><th>الوقت</th></tr></thead><tbody>${
-    (data||[]).map(r=>`<tr>
-      <td><span class="pill" style="background:var(--navy-container);color:var(--navy-d)">${AUDIT_LABELS[r.action]||r.action}</span></td>
-      <td>${esc(r.detail||"—")}</td>
-      <td class="mono muted" dir="ltr">${fmt(r.created_at)}</td></tr>`).join("")
-    || '<tr><td colspan="3" class="muted">لا عمليات مسجّلة بعد</td></tr>'}</tbody></table>`;
+  const { data, error } = await db.from("audit_log").select("action,school_id,detail,created_at").order("created_at",{ascending:false}).limit(1000);
+  if (error) {
+    box.innerHTML = `<p class="muted">لتفعيل سجل العمليات طبّق الهجرة <code>0007_audit_log</code> ثم <code>supabase db push</code>.</p>`;
+    document.getElementById("auAction").innerHTML = `<option value="">كل العمليات</option>`;
+    return;
+  }
+  AUDIT_ROWS = data || [];
+  const acts = [...new Set(AUDIT_ROWS.map(r=>r.action))];
+  const sel = document.getElementById("auAction");
+  const keep = sel.value;
+  sel.innerHTML = `<option value="">كل العمليات</option>` + acts.map(a=>`<option value="${esc(a)}">${esc(AUDIT_LABELS[a]||a)}</option>`).join("");
+  sel.value = keep;
+  drawAudit();
+}
+function auditFiltered() {
+  const act = document.getElementById("auAction").value;
+  const q = (document.getElementById("auSearch").value||"").trim();
+  return AUDIT_ROWS.filter(r=> (!act||r.action===act) &&
+    (!q || (r.detail||"").includes(q) || (AUDIT_LABELS[r.action]||r.action).includes(q)));
+}
+function drawAudit() {
+  const rows = auditFiltered();
+  document.getElementById("auditBody").innerHTML =
+    `<table><thead><tr><th>العملية</th><th>المدرسة</th><th>التفاصيل</th><th>الوقت</th></tr></thead><tbody>${
+      rows.map(r=>{ const s=schools.find(x=>x.id===r.school_id);
+        return `<tr>
+          <td><span class="pill" style="background:var(--navy-container);color:var(--navy-d)">${esc(AUDIT_LABELS[r.action]||r.action)}</span></td>
+          <td>${esc(s?.name||"—")}</td>
+          <td>${esc(r.detail||"—")}</td>
+          <td class="mono muted" dir="ltr">${fmt(r.created_at)}</td></tr>`; }).join("")
+      || '<tr><td colspan="4" class="muted">لا عمليات مطابقة</td></tr>'}</tbody></table>
+     <p class="muted" style="margin-top:10px">${rows.length} من ${AUDIT_ROWS.length} عملية</p>`;
+}
+function exportAuditCSV() {
+  const rows = auditFiltered();
+  if (!rows.length) return show("msg","لا عمليات للتصدير", true);
+  const head = ["العملية","الكود","المدرسة","التفاصيل","الوقت"];
+  const body = rows.map(r=>{ const s=schools.find(x=>x.id===r.school_id);
+    return [AUDIT_LABELS[r.action]||r.action, r.action, s?.name||"", r.detail||"", new Date(r.created_at).toLocaleString("ar-SA")]; });
+  downloadCSV(`audit-log-${new Date().toISOString().slice(0,10)}.csv`, head, body);
+}
+// Generic CSV download with UTF-8 BOM so Excel reads Arabic correctly.
+function downloadCSV(filename, head, rows) {
+  const q = v => `"${String(v??"").replace(/"/g,'""')}"`;
+  const csv = "﻿" + [head, ...rows].map(r=>r.map(q).join(",")).join("\r\n");
+  const url = URL.createObjectURL(new Blob([csv], {type:"text/csv;charset=utf-8"}));
+  const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
 }
 
 // ─── Plans management ─────────────────────────────────────────────────────

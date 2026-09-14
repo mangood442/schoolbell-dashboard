@@ -40,6 +40,7 @@
   .days label { margin-inline-end: 4px; font-size: 12px; white-space: nowrap; }
   .status-EXECUTED { color: var(--green-dark); font-weight: 600; }
   .status-SILENCED { color: var(--amber); font-weight: 600; }
+  .status-MUTED { color: var(--amber); font-weight: 600; }
   .status-MISSED, .status-ERROR { color: var(--red); font-weight: 600; }
   .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
   .msg { padding: 11px 16px; border-radius: 12px; margin: 10px 0; display: none; font-size: 14px; }
@@ -52,6 +53,14 @@
   #login input { width: 100%; margin-bottom: 12px; padding: 13px; }
   .muted { color: var(--muted); font-size: 13px; }
   h2 { font-size: 18px; font-weight: 600; margin: 0 0 14px; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+  .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; }
+  .kpi .l { font-size: 13px; color: var(--muted); }
+  .kpi .n { font-size: 28px; font-weight: 600; margin-top: 6px; }
+  .kpi .n.warn { color: var(--amber); } .kpi .n.bad { color: var(--red); } .kpi .n.good { color: var(--green-dark); }
+  .bar { height: 10px; border-radius: 999px; background: var(--green-container); overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: var(--green); }
+  @media (max-width: 760px) { .kpis { grid-template-columns: 1fr 1fr; } }
 </style>
 </head>
 <body>
@@ -78,6 +87,7 @@
   <div id="app" style="display:none">
     <div class="tabs">
       <button data-tab="schedules" class="active" onclick="showTab('schedules')">📅 الجداول</button>
+      <button data-tab="reports" onclick="showTab('reports')">📊 التقارير</button>
       <button data-tab="logs" onclick="showTab('logs')">📋 السجلات</button>
       <button data-tab="announce" onclick="showTab('announce')">📢 النداء</button>
       <button data-tab="devices" onclick="showTab('devices')">📱 الأجهزة</button>
@@ -90,6 +100,9 @@
         <div id="schedList" class="row"></div>
         <button class="ghost" onclick="addSchedule()">+ جدول جديد</button>
         <span style="flex:1"></span>
+        <button class="ghost" onclick="exportConfig()" title="حفظ نسخة احتياطية من كل الجداول">⬇ تصدير</button>
+        <button class="ghost" onclick="document.getElementById('importFile').click()" title="استعادة الجداول من ملف">⬆ استيراد</button>
+        <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importConfig(this.files[0])">
         <button class="primary" onclick="saveConfig()">💾 حفظ ونشر للتابلت</button>
       </div>
       <div id="schedMeta" class="row" style="margin-bottom:10px"></div>
@@ -101,6 +114,20 @@
       </table>
       <button class="ghost" style="margin-top:10px" onclick="addEvent()">+ إضافة حدث</button>
       <p class="muted">بعد الحفظ يسحب التابلت الجداول خلال 5 دقائق كحد أقصى (أو فورًا بزر "مزامنة الآن" في التطبيق).</p>
+    </section>
+
+    <!-- Reports -->
+    <section id="tab-reports" style="display:none">
+      <div class="kpis" id="repKpis"></div>
+      <div class="card">
+        <div class="row" style="margin-bottom:6px"><h2 style="flex:1">أكثر الأحداث تنفيذًا (آخر 30 يومًا)</h2>
+          <button class="ghost" onclick="loadReports()">تحديث</button></div>
+        <div id="repEvents"></div>
+      </div>
+      <div class="card">
+        <h2>النشاط اليومي (آخر 14 يومًا)</h2>
+        <div id="repDaily"></div>
+      </div>
     </section>
 
     <!-- Logs -->
@@ -314,11 +341,94 @@ async function loadDevices() {
   ).join("");
 }
 
+// ── Reports ──
+async function loadReports() {
+  const since = new Date(Date.now() - 30 * 86400000).toISOString();
+  const [{ data: logs }, { data: devs }, { count: cmdCount }] = await Promise.all([
+    db.from("device_logs").select("event_name, planned_at, executed_at, status").gte("planned_at", since).order("planned_at", { ascending: false }).limit(3000),
+    db.from("devices").select("last_seen_at"),
+    db.from("commands").select("id", { count: "exact", head: true }).gte("created_at", since),
+  ]);
+  const L = logs || [];
+  const done = L.filter(l => l.status === "EXECUTED");
+  const missed = L.filter(l => l.status === "MISSED" || l.status === "ERROR");
+  const dayMs = 86400000, now = Date.now();
+  const inLast = d => L.filter(l => (now - new Date(l.planned_at)) < d * dayMs && l.status === "EXECUTED").length;
+  const drifts = done.map(l => l.executed_at ? Math.abs(new Date(l.executed_at) - new Date(l.planned_at)) : null).filter(v => v != null);
+  const avgDrift = drifts.length ? Math.round(drifts.reduce((a, b) => a + b, 0) / drifts.length) : null;
+  const rate = L.length ? Math.round(done.length / L.length * 100) : null;
+  const lastSeen = (devs || []).map(d => d.last_seen_at).filter(Boolean).sort().slice(-1)[0];
+
+  document.getElementById("repKpis").innerHTML = `
+    <div class="kpi"><div class="l">أجراس اليوم</div><div class="n good">${inLast(1)}</div></div>
+    <div class="kpi"><div class="l">آخر 7 أيام</div><div class="n">${inLast(7)}</div></div>
+    <div class="kpi"><div class="l">نسبة الالتزام</div><div class="n ${rate!=null&&rate<90?"warn":"good"}">${rate==null?"—":rate+"%"}</div></div>
+    <div class="kpi"><div class="l">متوسط الدقّة</div><div class="n">${avgDrift==null?"—":"±"+avgDrift}<span class="muted" style="font-size:14px">${avgDrift==null?"":" ملّي ث"}</span></div></div>
+    <div class="kpi"><div class="l">أحداث فائتة/أخطاء</div><div class="n ${missed.length?"bad":"good"}">${missed.length}</div></div>
+    <div class="kpi"><div class="l">نداءات مرسلة (30ي)</div><div class="n">${cmdCount||0}</div></div>
+    <div class="kpi"><div class="l">إجمالي أحداث (30ي)</div><div class="n">${L.length}</div></div>
+    <div class="kpi"><div class="l">آخر ظهور للتابلت</div><div class="n" style="font-size:15px">${lastSeen?fmt(lastSeen):"—"}</div></div>`;
+
+  // Top events
+  const byName = {};
+  done.forEach(l => byName[l.event_name] = (byName[l.event_name] || 0) + 1);
+  const top = Object.entries(byName).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const max = top.length ? top[0][1] : 1;
+  document.getElementById("repEvents").innerHTML = top.length ? top.map(([n, c]) =>
+    `<div style="margin:8px 0"><div class="row" style="justify-content:space-between"><span>${esc(n)}</span><b class="mono">${c}</b></div>
+     <div class="bar"><span style="width:${Math.round(c/max*100)}%"></span></div></div>`).join("")
+    : '<p class="muted">لا بيانات بعد</p>';
+
+  // Daily activity (last 14 days)
+  const days = [];
+  for (let i = 13; i >= 0; i--) { const d = new Date(now - i * dayMs); days.push(d.toISOString().slice(0, 10)); }
+  const perDay = Object.fromEntries(days.map(d => [d, 0]));
+  done.forEach(l => { const k = new Date(l.planned_at).toISOString().slice(0, 10); if (k in perDay) perDay[k]++; });
+  const dmax = Math.max(1, ...Object.values(perDay));
+  document.getElementById("repDaily").innerHTML =
+    `<div class="row" style="align-items:flex-end;gap:6px;height:130px">` +
+    days.map(d => { const v = perDay[d]; const h = Math.round(v / dmax * 110) + 2;
+      return `<div style="flex:1;text-align:center" title="${d}: ${v}">
+        <div style="background:var(--green);border-radius:6px 6px 0 0;height:${h}px"></div>
+        <div class="muted" style="font-size:10px;margin-top:4px">${d.slice(8)}/${d.slice(5,7)}</div></div>`; }).join("") +
+    `</div>`;
+}
+
+// ── Backup / restore ──
+function exportConfig() {
+  const blob = new Blob([JSON.stringify(config, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url;
+  a.download = `schedules-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  show("msg", "✓ تم تصدير نسخة احتياطية من الجداول");
+}
+function importConfig(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (!data || !Array.isArray(data.schedules)) throw new Error("ملف غير صالح");
+      if (!confirm("استبدال كل الجداول الحالية بمحتوى الملف؟ (لن يُحفظ إلا بعد ضغط \"حفظ ونشر\")")) return;
+      config = data;
+      if (config.schedules.length === 0) config.schedules.push({ name: "صباحي", isActive: true, events: [] });
+      current = Math.max(0, config.schedules.findIndex(s => s.isActive));
+      renderSchedules();
+      show("msg", "✓ استوردت الجداول — راجعها ثم اضغط \"حفظ ونشر\" للتطبيق");
+    } catch (e) { show("msg", "تعذّر الاستيراد: " + e.message, true); }
+  };
+  reader.readAsText(file);
+  document.getElementById("importFile").value = "";
+}
+
 // ─── UI helpers ─────────────────────────────────────────────────────────────
 function showTab(name) {
   document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
-  ["schedules", "logs", "announce", "devices"].forEach(t =>
+  ["schedules", "reports", "logs", "announce", "devices"].forEach(t =>
     document.getElementById("tab-" + t).style.display = t === name ? "block" : "none");
+  if (name === "reports") loadReports();
   if (name === "logs") loadLogs();
   if (name === "devices") loadDevices();
   if (name === "announce") loadCommands();
