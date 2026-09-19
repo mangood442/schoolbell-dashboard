@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>لوحة الجرس المدرسي</title>
+<title>ميقات — لوحة المدرسة</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -49,7 +49,7 @@
   .sched-pill { padding: 9px 18px; border-radius: 999px; border: 1px solid var(--line); cursor: pointer; background: #fff; font-family: inherit; font-size: 15px; color: var(--mid); }
   .sched-pill.active { background: var(--green-container); color: var(--green-dark); border-color: var(--green-border); font-weight: 600; }
   #login { max-width: 400px; margin: 90px auto; }
-  #login .logo { width: 44px; height: 44px; border-radius: 12px; font-size: 22px; margin-bottom: 14px; }
+  #login .logo { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 12px; background: var(--green); color: #fff; margin-bottom: 14px; }
   #login input { width: 100%; margin-bottom: 12px; padding: 13px; }
   .muted { color: var(--muted); font-size: 13px; }
   .subtle { background: #F7FAF8; border-radius: 12px; padding: 12px 16px; }
@@ -69,8 +69,8 @@
 <body>
 
 <header>
-  <span class="logo">ج</span>
-  <h1>لوحة الجرس المدرسي</h1>
+  <span class="logo"><svg viewBox="0 0 128 128" width="66%" height="66%" aria-hidden="true"><g fill="#fff"><circle cx="64" cy="23.5" r="5.5"/><rect x="60" y="26" width="8" height="7" rx="3.2"/><path d="M64 31C83 31 92 46.5 92 65V74C92 82 95 87.2 100 91H28C33 87.2 36 82 36 74V65C36 46.5 45 31 64 31Z"/><rect x="26" y="88" width="76" height="10.5" rx="5.25"/><circle cx="64" cy="107.5" r="6.6"/></g><circle cx="99" cy="33" r="9" fill="#5EE0AD"/></svg></span>
+  <h1>ميقات</h1>
   <span class="school" id="schoolName"></span>
   <button class="ghost" id="logoutBtn" style="display:none">خروج</button>
 </header>
@@ -78,8 +78,8 @@
 <main>
   <!-- Login -->
   <div id="login" class="card">
-    <span class="logo">ج</span>
-    <h2>تسجيل الدخول</h2>
+    <span class="logo"><svg viewBox="0 0 128 128" width="66%" height="66%" aria-hidden="true"><g fill="#fff"><circle cx="64" cy="23.5" r="5.5"/><rect x="60" y="26" width="8" height="7" rx="3.2"/><path d="M64 31C83 31 92 46.5 92 65V74C92 82 95 87.2 100 91H28C33 87.2 36 82 36 74V65C36 46.5 45 31 64 31Z"/><rect x="26" y="88" width="76" height="10.5" rx="5.25"/><circle cx="64" cy="107.5" r="6.6"/></g><circle cx="99" cy="33" r="9" fill="#5EE0AD"/></svg></span>
+    <h2>تسجيل الدخول — ميقات</h2>
     <input id="email" type="email" placeholder="البريد الإلكتروني" dir="ltr">
     <input id="password" type="password" placeholder="كلمة المرور" dir="ltr">
     <button class="primary" style="width:100%" onclick="login()">دخول</button>
