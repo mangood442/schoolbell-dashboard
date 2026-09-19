@@ -52,6 +52,9 @@
   #login .logo { width: 44px; height: 44px; border-radius: 12px; font-size: 22px; margin-bottom: 14px; }
   #login input { width: 100%; margin-bottom: 12px; padding: 13px; }
   .muted { color: var(--muted); font-size: 13px; }
+  .subtle { background: #F7FAF8; border-radius: 12px; padding: 12px 16px; }
+  .sec-pill { padding: 8px 16px; border-radius: 999px; border: 1px solid var(--line); cursor: pointer; background: #fff; font-family: inherit; font-size: 14px; color: var(--mid); }
+  .sec-pill.active { background: var(--green); color: #fff; border-color: var(--green); font-weight: 600; }
   h2 { font-size: 18px; font-weight: 600; margin: 0 0 14px; }
   .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
   .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; }
@@ -97,12 +100,16 @@
 
     <!-- Schedules -->
     <section id="tab-schedules" class="card">
+      <!-- Sections bar -->
+      <div class="row" id="sectionBar" style="margin-bottom:10px"></div>
+      <div id="sectionMeta" class="row subtle" style="margin-bottom:14px"></div>
+
       <div class="row" style="margin-bottom:12px">
         <div id="schedList" class="row"></div>
         <button class="ghost" onclick="addSchedule()">+ جدول جديد</button>
         <span style="flex:1"></span>
-        <button class="ghost" onclick="exportConfig()" title="حفظ نسخة احتياطية من كل الجداول">⬇ تصدير</button>
-        <button class="ghost" onclick="document.getElementById('importFile').click()" title="استعادة الجداول من ملف">⬆ استيراد</button>
+        <button class="ghost" onclick="exportConfig()" title="حفظ نسخة احتياطية لجداول هذا القسم">⬇ تصدير القسم</button>
+        <button class="ghost" onclick="document.getElementById('importFile').click()" title="استعادة جداول هذا القسم من ملف">⬆ استيراد للقسم</button>
         <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importConfig(this.files[0])">
         <button class="primary" onclick="saveConfig()">💾 حفظ ونشر للتابلت</button>
       </div>
@@ -145,7 +152,9 @@
     <section id="tab-announce" class="card" style="display:none">
       <h2>نداء عن بُعد</h2>
       <div class="row">
-        <input id="announceText" style="flex:1;min-width:260px" placeholder="نص النداء (يُنطق بالصوت العربي على التابلت)">
+        <label class="muted">إلى</label>
+        <select id="announceTarget" title="وجهة النداء/الجرس"></select>
+        <input id="announceText" style="flex:1;min-width:220px" placeholder="نص النداء (يُنطق بالصوت العربي على التابلت)">
         <input id="announceDelay" type="number" min="0" max="180" value="0" style="width:90px" title="تأخير بالدقائق">
         <button class="primary" onclick="sendAnnounce()">إرسال النداء</button>
         <button class="ghost" onclick="sendBell()">🔔 جرس الآن</button>
@@ -158,7 +167,8 @@
     <!-- Devices -->
     <section id="tab-devices" class="card" style="display:none">
       <h2>الأجهزة المرتبطة</h2>
-      <table><thead><tr><th>الاسم</th><th>الإصدار</th><th>آخر ظهور</th></tr></thead>
+      <p class="muted" style="margin-top:-8px">اربط كل جهاز بقسمه ليرنّ جدول ذلك القسم فقط، أو اتركه «كل المدرسة» ليرنّ اتحاد جداول الأقسام.</p>
+      <table><thead><tr><th>الاسم</th><th>القسم</th><th>الإصدار</th><th>آخر ظهور</th><th></th></tr></thead>
       <tbody id="devicesBody"></tbody></table>
     </section>
   </div>
@@ -174,7 +184,10 @@ const DAY_NAMES = ["ن", "ث", "أر", "خ", "ج", "س", "ح"]; // ISO: الاث
 const DAY_ORDER = [6, 0, 1, 2, 3, 4, 5];                 // عرضًا: الأحد أولاً
 const SOUNDS = { bell1: "جرس كهربائي", bell2: "جرس برونزي", bell3: "لحن ترحيبي", bell4: "دينغ دونغ", bell5: "غونغ هادئ" };
 
-let schoolId = null, config = { schedules: [] }, configVersion = 0, current = 0;
+let schoolId = null, config = { v: 2, sections: [] }, configVersion = 0;
+let curSection = 0, curSched = 0;
+function sec() { return config.sections[curSection]; }
+function secScheds() { return sec() ? sec().schedules : []; }
 
 // ─── Auth ───────────────────────────────────────────────────────────────────
 async function login() {
@@ -206,26 +219,98 @@ async function init() {
 
 document.getElementById("logoutBtn").onclick = async () => { await db.auth.signOut(); location.reload(); };
 
-// ─── Schedules editor ───────────────────────────────────────────────────────
+// ─── Config normalization (v2 sections; accepts legacy {schedules:[]}) ────────
+function normalizeConfig(p) {
+  const normSec = s => ({
+    id: s.id ?? null, name: s.name || "قسم", defaultSoundKey: s.defaultSoundKey || "bell1",
+    prayer: s.prayer || null, schedules: Array.isArray(s.schedules) ? s.schedules : [],
+  });
+  if (p && Array.isArray(p.sections)) return { v: 2, sections: p.sections.map(normSec) };
+  const scheds = p && Array.isArray(p.schedules) ? p.schedules : [];   // legacy
+  return { v: 2, sections: [normSec({ name: "عام", schedules: scheds })] };
+}
+
 async function loadConfig() {
   const { data } = await db.from("school_configs").select("version, payload").maybeSingle();
   configVersion = data?.version || 0;
-  config = data?.payload && Array.isArray(data.payload.schedules) ? data.payload : { schedules: [] };
-  if (config.schedules.length === 0) {
-    config.schedules.push({ name: "صباحي", isActive: true, events: [] });
-  }
-  current = Math.max(0, config.schedules.findIndex(s => s.isActive));
-  renderSchedules();
+  config = normalizeConfig(data?.payload);
+  if (config.sections.length === 0) config.sections.push({ id: null, name: "عام", defaultSoundKey: "bell1", schedules: [] });
+  config.sections.forEach(s => { if (s.schedules.length === 0) s.schedules.push({ name: "صباحي", isActive: true, events: [] }); });
+  curSection = 0; curSched = Math.max(0, secScheds().findIndex(s => s.isActive));
+  renderSectionBar(); renderSchedules(); fillTargets();
 }
 
+// ─── Sections ─────────────────────────────────────────────────────────────────
+function renderSectionBar() {
+  const bar = document.getElementById("sectionBar");
+  bar.innerHTML = "";
+  config.sections.forEach((s, i) => {
+    const b = document.createElement("button");
+    b.className = "sec-pill" + (i === curSection ? " active" : "");
+    b.textContent = s.name;
+    b.onclick = () => { curSection = i; curSched = Math.max(0, secScheds().findIndex(x => x.isActive)); renderSectionBar(); renderSchedules(); };
+    bar.appendChild(b);
+  });
+  const add = document.createElement("button");
+  add.className = "ghost"; add.textContent = "+ قسم"; add.onclick = addSection;
+  bar.appendChild(add);
+  renderSectionMeta();
+}
+function renderSectionMeta() {
+  const s = sec();
+  const meta = document.getElementById("sectionMeta");
+  if (!s) { meta.innerHTML = ""; return; }
+  meta.innerHTML = "";
+  const soundLabel = document.createElement("label"); soundLabel.className = "muted"; soundLabel.textContent = "الصوت الافتراضي للقسم:";
+  const soundSel = document.createElement("select");
+  Object.entries(SOUNDS).forEach(([k, v]) => soundSel.add(new Option(v, k)));
+  soundSel.value = s.defaultSoundKey || "bell1";
+  soundSel.onchange = () => { s.defaultSoundKey = soundSel.value; };
+  const rename = document.createElement("button"); rename.className = "ghost"; rename.textContent = "تعديل اسم القسم"; rename.onclick = renameSection;
+  const del = document.createElement("button"); del.className = "ghost danger"; del.textContent = "حذف القسم"; del.onclick = deleteSection;
+  const spacer = document.createElement("span"); spacer.style.flex = "1";
+  meta.append(soundLabel, soundSel, spacer, rename, del);
+}
+async function addSection() {
+  const name = prompt("اسم القسم الجديد (مثال: الابتدائي):");
+  if (!name || !name.trim()) return;
+  const { data, error } = await db.from("sections")
+    .insert({ school_id: schoolId, name: name.trim(), sort_order: config.sections.length })
+    .select("id").single();
+  if (error) return show("msg", "فشل: " + error.message, true);
+  config.sections.push({ id: data.id, name: name.trim(), defaultSoundKey: "bell1", prayer: null, schedules: [{ name: "صباحي", isActive: true, events: [] }] });
+  curSection = config.sections.length - 1; curSched = 0;
+  renderSectionBar(); renderSchedules(); fillTargets();
+  saveConfig(true);
+}
+async function renameSection() {
+  const s = sec(); const name = prompt("اسم القسم:", s.name);
+  if (!name || !name.trim() || name.trim() === s.name) return;
+  if (s.id) { const { error } = await db.from("sections").update({ name: name.trim() }).eq("id", s.id); if (error) return show("msg", "فشل: " + error.message, true); }
+  s.name = name.trim(); renderSectionBar(); fillTargets(); saveConfig(true);
+}
+async function deleteSection() {
+  if (config.sections.length <= 1) return show("msg", "يجب إبقاء قسم واحد على الأقل", true);
+  const s = sec();
+  if (s.id) {
+    const { count } = await db.from("devices").select("id", { count: "exact", head: true }).eq("section_id", s.id);
+    if (count) return show("msg", "لا يمكن حذف قسم مرتبط بأجهزة — أعد ربط الأجهزة أولًا", true);
+  }
+  if (!confirm(`حذف قسم "${s.name}" وكل جداوله؟`)) return;
+  if (s.id) { const { error } = await db.from("sections").delete().eq("id", s.id); if (error) return show("msg", "فشل: " + error.message, true); }
+  config.sections.splice(curSection, 1); curSection = 0; curSched = Math.max(0, secScheds().findIndex(x => x.isActive));
+  renderSectionBar(); renderSchedules(); fillTargets(); saveConfig(true);
+}
+
+// ─── Schedules editor (scoped to the current section) ─────────────────────────
 function renderSchedules() {
   const list = document.getElementById("schedList");
   list.innerHTML = "";
-  config.schedules.forEach((s, i) => {
+  secScheds().forEach((s, i) => {
     const b = document.createElement("button");
-    b.className = "sched-pill" + (i === current ? " active" : "");
+    b.className = "sched-pill" + (i === curSched ? " active" : "");
     b.textContent = s.name + (s.isActive ? " ✓" : "");
-    b.onclick = () => { current = i; renderSchedules(); };
+    b.onclick = () => { curSched = i; renderSchedules(); };
     list.appendChild(b);
   });
   renderMeta();
@@ -233,28 +318,30 @@ function renderSchedules() {
 }
 
 function renderMeta() {
-  const s = config.schedules[current];
+  const s = secScheds()[curSched];
   const meta = document.getElementById("schedMeta");
   meta.innerHTML = "";
+  if (!s) return;
   meta.append(
     field("الاسم", inp(s.name, v => s.name = v)),
     checkbox("الجدول النشط", s.isActive, v => {
-      if (v) config.schedules.forEach((x, i) => x.isActive = i === current);
+      if (v) secScheds().forEach((x, i) => x.isActive = i === curSched);
       else s.isActive = false;
       renderSchedules();
     }),
   );
   const del = document.createElement("button");
   del.className = "ghost danger"; del.textContent = "حذف الجدول";
-  del.onclick = () => { if (config.schedules.length > 1 && confirm("حذف " + s.name + "؟")) { config.schedules.splice(current, 1); current = 0; renderSchedules(); } };
+  del.onclick = () => { if (secScheds().length > 1 && confirm("حذف " + s.name + "؟")) { secScheds().splice(curSched, 1); curSched = 0; renderSchedules(); } };
   meta.appendChild(del);
 }
 
 function renderEvents() {
-  const s = config.schedules[current];
-  s.events.sort((a, b) => a.startMinuteOfDay - b.startMinuteOfDay);
+  const s = secScheds()[curSched];
   const body = document.querySelector("#eventsTable tbody");
   body.innerHTML = "";
+  if (!s) return;
+  s.events.sort((a, b) => a.startMinuteOfDay - b.startMinuteOfDay);
   s.events.forEach((e, i) => {
     const tr = document.createElement("tr");
     tr.append(
@@ -272,9 +359,10 @@ function renderEvents() {
 }
 
 function addEvent() {
-  config.schedules[current].events.push({
+  const s = secScheds()[curSched]; if (!s) return;
+  s.events.push({
     name: "حدث جديد", startMinuteOfDay: 420, durationMin: 45,
-    daysOfWeek: 0b1001111, volume: 1, enabled: true, sortOrder: 0, soundKey: "bell1",
+    daysOfWeek: 0b1001111, volume: 1, enabled: true, sortOrder: 0, soundKey: "",
   });
   renderEvents();
 }
@@ -282,19 +370,28 @@ function addEvent() {
 function addSchedule() {
   const name = prompt("اسم الجدول الجديد:", "جدول جديد");
   if (!name) return;
-  config.schedules.push({ name, isActive: false, events: [] });
-  current = config.schedules.length - 1;
+  secScheds().push({ name, isActive: false, events: [] });
+  curSched = secScheds().length - 1;
   renderSchedules();
 }
 
-async function saveConfig() {
-  if (!config.schedules.some(s => s.isActive)) config.schedules[0].isActive = true;
+async function saveConfig(silent) {
+  config.sections.forEach(sc => { if (sc.schedules.length && !sc.schedules.some(s => s.isActive)) sc.schedules[0].isActive = true; });
   const { error } = await db.from("school_configs")
     .update({ payload: config, version: configVersion + 1, updated_at: new Date().toISOString() })
     .eq("school_id", schoolId);
   if (error) return show("msg", "فشل الحفظ: " + error.message, true);
   configVersion += 1;
-  show("msg", "✓ حُفظ (الإصدار " + configVersion + ") — سيصل للتابلت خلال دقائق");
+  if (!silent) show("msg", "✓ حُفظ (الإصدار " + configVersion + ") — سيصل للتابلت خلال دقائق");
+}
+
+function fillTargets() {
+  const sel = document.getElementById("announceTarget");
+  if (!sel) return;
+  const keep = sel.value;
+  sel.innerHTML = `<option value="">كل المدرسة</option>` +
+    config.sections.filter(s => s.id).map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
+  sel.value = keep;
 }
 
 // ─── Logs / Announce / Devices ──────────────────────────────────────────────
@@ -309,18 +406,21 @@ async function loadLogs() {
   }).join("");
 }
 
+function announceTarget() { return document.getElementById("announceTarget").value || null; }
+function targetLabel() { const el = document.getElementById("announceTarget"); return el.value ? el.options[el.selectedIndex].text : "كل المدرسة"; }
+
 async function sendAnnounce() {
   const text = document.getElementById("announceText").value.trim();
   if (!text) return;
   const delay = +document.getElementById("announceDelay").value || 0;
-  const { error } = await db.from("commands").insert({ school_id: schoolId, type: "announce", payload: { text, delay } });
-  show("msg", error ? "فشل: " + error.message : "✓ أُرسل النداء", !!error);
+  const { error } = await db.from("commands").insert({ school_id: schoolId, type: "announce", payload: { text, delay }, section_id: announceTarget() });
+  show("msg", error ? "فشل: " + error.message : "✓ أُرسل النداء إلى " + targetLabel(), !!error);
   loadCommands();
 }
 
 async function sendBell() {
-  const { error } = await db.from("commands").insert({ school_id: schoolId, type: "bell", payload: {} });
-  show("msg", error ? "فشل: " + error.message : "✓ أُرسل أمر الجرس", !!error);
+  const { error } = await db.from("commands").insert({ school_id: schoolId, type: "bell", payload: {}, section_id: announceTarget() });
+  show("msg", error ? "فشل: " + error.message : "✓ أُرسل أمر الجرس إلى " + targetLabel(), !!error);
   loadCommands();
 }
 
@@ -336,10 +436,28 @@ async function loadCommands() {
 }
 
 async function loadDevices() {
-  const { data } = await db.from("devices").select("name, app_version, last_seen_at").order("last_seen_at", { ascending: false });
+  const { data } = await db.from("devices").select("id, name, app_version, last_seen_at, section_id").order("last_seen_at", { ascending: false });
+  const opts = sel => `<option value="">كل المدرسة</option>` +
+    config.sections.filter(s => s.id).map(s => `<option value="${s.id}" ${s.id === sel ? "selected" : ""}>${esc(s.name)}</option>`).join("");
   document.getElementById("devicesBody").innerHTML = (data || []).map(d =>
-    `<tr><td>${esc(d.name)}</td><td dir="ltr">${esc(d.app_version || "—")}</td><td dir="ltr">${fmt(d.last_seen_at)}</td></tr>`
-  ).join("");
+    `<tr><td>${esc(d.name)}</td>
+      <td><select onchange="assignDevice('${d.id}', this.value)">${opts(d.section_id)}</select></td>
+      <td dir="ltr">${esc(d.app_version || "—")}</td>
+      <td dir="ltr">${fmt(d.last_seen_at)}</td>
+      <td><button class="ghost" onclick="renameDevice('${d.id}', ${JSON.stringify(d.name)})">تسمية</button></td></tr>`
+  ).join("") || '<tr><td colspan="5" class="muted">لا أجهزة مرتبطة بعد</td></tr>';
+}
+async function assignDevice(id, section) {
+  const { error } = await db.rpc("set_device_section", { p_device: id, p_section: section || null });
+  if (error) return show("msg", "فشل: " + error.message, true);
+  show("msg", "✓ حُدّث قسم الجهاز");
+}
+async function renameDevice(id, currentName) {
+  const name = prompt("اسم الجهاز:", currentName || "");
+  if (!name || !name.trim()) return;
+  const { error } = await db.rpc("set_device_name", { p_device: id, p_name: name.trim() });
+  if (error) return show("msg", "فشل: " + error.message, true);
+  loadDevices(); show("msg", "✓ حُدّث اسم الجهاز");
 }
 
 // ── Reports ──
@@ -395,15 +513,16 @@ async function loadReports() {
     `</div>`;
 }
 
-// ── Backup / restore ──
+// ── Backup / restore (scoped to the current section) ──
 function exportConfig() {
-  const blob = new Blob([JSON.stringify(config, null, 2)], { type: "application/json" });
+  const data = { section: sec().name, defaultSoundKey: sec().defaultSoundKey, schedules: secScheds() };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a"); a.href = url;
-  a.download = `schedules-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `section-${sec().name}-${new Date().toISOString().slice(0, 10)}.json`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  show("msg", "✓ تم تصدير نسخة احتياطية من الجداول");
+  show("msg", "✓ تم تصدير جداول القسم");
 }
 function importConfig(file) {
   if (!file) return;
@@ -411,13 +530,14 @@ function importConfig(file) {
   reader.onload = () => {
     try {
       const data = JSON.parse(reader.result);
-      if (!data || !Array.isArray(data.schedules)) throw new Error("ملف غير صالح");
-      if (!confirm("استبدال كل الجداول الحالية بمحتوى الملف؟ (لن يُحفظ إلا بعد ضغط \"حفظ ونشر\")")) return;
-      config = data;
-      if (config.schedules.length === 0) config.schedules.push({ name: "صباحي", isActive: true, events: [] });
-      current = Math.max(0, config.schedules.findIndex(s => s.isActive));
-      renderSchedules();
-      show("msg", "✓ استوردت الجداول — راجعها ثم اضغط \"حفظ ونشر\" للتطبيق");
+      const scheds = Array.isArray(data.schedules) ? data.schedules : null;
+      if (!scheds) throw new Error("ملف غير صالح");
+      if (!confirm(`استبدال جداول قسم "${sec().name}" بمحتوى الملف؟ (لن يُحفظ إلا بعد ضغط "حفظ ونشر")`)) return;
+      sec().schedules = scheds.length ? scheds : [{ name: "صباحي", isActive: true, events: [] }];
+      if (data.defaultSoundKey) sec().defaultSoundKey = data.defaultSoundKey;
+      curSched = Math.max(0, secScheds().findIndex(s => s.isActive));
+      renderSectionBar(); renderSchedules();
+      show("msg", "✓ استوردت جداول القسم — راجعها ثم اضغط \"حفظ ونشر\" للتطبيق");
     } catch (e) { show("msg", "تعذّر الاستيراد: " + e.message, true); }
   };
   reader.readAsText(file);
@@ -466,9 +586,11 @@ function daysBoxes(e) {
 }
 function soundSelect(e) {
   const s = document.createElement("select");
+  const defName = SOUNDS[sec()?.defaultSoundKey] || "الافتراضي";
+  s.add(new Option("افتراضي القسم (" + defName + ")", ""));
   Object.entries(SOUNDS).forEach(([k, v]) => s.add(new Option(v, k)));
-  if (!(e.soundKey in SOUNDS)) s.add(new Option(e.soundKey, e.soundKey));
-  s.value = e.soundKey || "bell1";
+  if (e.soundKey && !(e.soundKey in SOUNDS)) s.add(new Option(e.soundKey, e.soundKey));
+  s.value = e.soundKey || "";
   s.onchange = () => e.soundKey = s.value;
   return s;
 }

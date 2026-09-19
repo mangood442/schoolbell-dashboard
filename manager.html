@@ -105,8 +105,17 @@ const SUPABASE_KEY = "sb_publishable_D0YQfRkraujKgNEVpSNKhw_YMvm2oB7";
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const DAY_MS = 86400000;
-let schoolId = null, config = { schedules: [] }, configVersion = 0, tab = "home";
-let logs = [], commands = [];
+let schoolId = null, config = { v: 2, sections: [] }, configVersion = 0, tab = "home";
+let logs = [], commands = [], curSec = -1;   // -1 = whole school (all sections)
+
+function normalizeConfig(p) {
+  const normSec = s => ({ id: s.id ?? null, name: s.name || "قسم", defaultSoundKey: s.defaultSoundKey || "bell1", schedules: Array.isArray(s.schedules) ? s.schedules : [] });
+  if (p && Array.isArray(p.sections)) return { v: 2, sections: p.sections.map(normSec) };
+  const scheds = p && Array.isArray(p.schedules) ? p.schedules : [];
+  return { v: 2, sections: [normSec({ name: "عام", schedules: scheds })] };
+}
+function secObj() { return curSec >= 0 ? config.sections[curSec] : null; }
+function multiSection() { return config.sections.length > 1; }
 
 // ─── Auth ───────────────────────────────────────────────────────────────────
 async function login() {
@@ -140,22 +149,34 @@ async function refresh() {
   ]);
   document.getElementById("schoolName").textContent = school?.name || "—";
   configVersion = cfg?.version || 0;
-  config = cfg?.payload && Array.isArray(cfg.payload.schedules) ? cfg.payload : { schedules: [] };
+  config = normalizeConfig(cfg?.payload);
+  if (!multiSection()) curSec = 0;                       // single section → scope to it
+  if (curSec >= config.sections.length) curSec = -1;
   logs = lg || []; commands = cmd || [];
   const now = new Date();
   const fmt = new Intl.DateTimeFormat("ar", { weekday: "long", day: "numeric", month: "long" });
-  const active = config.schedules.find(s => s.isActive);
-  document.getElementById("todayLine").textContent = fmt.format(now) + (active ? " · " + active.name : "");
+  const s = secObj();
+  const active = s ? (s.schedules.find(x => x.isActive) || s.schedules[0]) : null;
+  document.getElementById("todayLine").textContent = fmt.format(now) +
+    (s ? " · " + s.name : "") + (active ? " · " + active.name : "");
 }
+
+// Section chips shown atop each tab (only when the school has more than one).
+function sectionChips() {
+  if (!multiSection()) return "";
+  const chip = (label, idx) => `<span class="pill${curSec === idx ? " active" : ""}" onclick="pickSection(${idx})">${esc(label)}</span>`;
+  return `<div class="row" style="gap:8px; flex-wrap:wrap; margin-bottom:2px;">${chip("كل المدرسة", -1)}${config.sections.map((s, i) => chip(s.name, i)).join("")}</div>`;
+}
+function pickSection(i) { curSec = i; showTab(tab); }
 
 // ─── Schedule maths (mirrors the app) ───────────────────────────────────────
 function activeEvents() {
-  const s = config.schedules.find(x => x.isActive) || config.schedules[0];
-  if (!s) return [];
+  const secs = curSec >= 0 ? [config.sections[curSec]] : config.sections;
   const isoDow = ((new Date().getDay() + 6) % 7); // 0=Mon..6=Sun
-  return (s.events || [])
-    .filter(e => e.enabled !== false && (e.daysOfWeek & (1 << isoDow)))
-    .sort((a, b) => a.startMinuteOfDay - b.startMinuteOfDay);
+  return secs.filter(Boolean).flatMap(sc => {
+    const s = (sc.schedules || []).find(x => x.isActive) || (sc.schedules || [])[0];
+    return (s?.events || []).filter(e => e.enabled !== false && (e.daysOfWeek & (1 << isoDow)));
+  }).sort((a, b) => a.startMinuteOfDay - b.startMinuteOfDay);
 }
 function nowMin() { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); }
 function hhmm(min) { return String(Math.floor(min / 60)).padStart(2, "0") + ":" + String(min % 60).padStart(2, "0"); }
@@ -210,6 +231,7 @@ function renderHome() {
     return `<div class="evt${isNow ? " now" : ""}"><span class="t mono">${hhmm(e.startMinuteOfDay)}</span><span style="flex:1; font-size:15px;">${esc(e.name)}</span>${tag}</div>`;
   }).join("");
   return `
+    ${sectionChips()}
     <div class="card row" style="gap:18px;">
       <div class="ring" style="${ring}"><div><span class="big mono">${cur ? hhmm(evs[curIdx].durationMin ? (evs[curIdx].startMinuteOfDay + evs[curIdx].durationMin - nm) : 45).replace(/^0/, "") : "—"}</span><span class="muted" style="font-size:11px;">المتبقي</span></div></div>
       <div style="display:flex; flex-direction:column; gap:5px;">
@@ -229,7 +251,10 @@ function renderHome() {
 }
 
 function renderAnnounce() {
+  const dest = curSec >= 0 ? config.sections[curSec].name : "كل المدرسة";
   return `
+    ${sectionChips()}
+    ${multiSection() ? `<div class="muted">الوجهة: <b style="color:var(--green)">${esc(dest)}</b></div>` : ""}
     <div class="card" style="display:flex; flex-direction:column; gap:10px;">
       <h2>نص النداء</h2>
       <textarea id="annText" rows="3" placeholder="يُنطق بالصوت العربي على مكبرات المدرسة…"></textarea>
@@ -260,14 +285,19 @@ function renderAnnounce() {
 }
 
 function renderSchedules() {
-  const rows = config.schedules.map(s => `
+  if (curSec < 0 && multiSection()) {
+    return `${sectionChips()}<div class="card"><span class="muted">اختر قسمًا لتبديل جداوله وإزاحة أوقاته.</span></div>`;
+  }
+  const s0 = secObj() || config.sections[0];
+  const rows = (s0.schedules || []).map(s => `
     <div class="evt${s.isActive ? " now" : ""}" onclick="activateSchedule('${esc(s.name)}')">
       <span style="flex:1; font-size:16px; font-weight:${s.isActive ? 600 : 400};">${esc(s.name)}</span>
       ${s.isActive ? '<span class="tag-green">نشط</span>' : `<span class="tag-dim">${(s.events||[]).length} حدثًا</span>`}
     </div>`).join("");
   return `
+    ${sectionChips()}
     <div class="card" style="display:flex; flex-direction:column; gap:10px;">
-      <h2>تبديل الجدول النشط</h2>
+      <h2>تبديل الجدول النشط${multiSection() ? " · " + esc(s0.name) : ""}</h2>
       <div style="display:flex; flex-direction:column; gap:8px;">${rows || '<span class="muted">لا جداول</span>'}</div>
     </div>
     <div class="card" style="display:flex; flex-direction:column; gap:12px;">
@@ -304,26 +334,29 @@ function pickDelay(el) {
 function fillTpl(t) { const ta = document.getElementById("annText"); ta.value = t; ta.focus(); }
 function bumpShift(d) { shiftMin += d; document.getElementById("shiftVal").textContent = (shiftMin >= 0 ? "+" : "") + shiftMin + " د"; }
 
+function cmdTarget() { return curSec >= 0 ? (config.sections[curSec].id || null) : null; }
 async function sendBell() {
-  const { error } = await db.from("commands").insert({ school_id: schoolId, type: "bell", payload: {} });
+  const { error } = await db.from("commands").insert({ school_id: schoolId, type: "bell", payload: {}, section_id: cmdTarget() });
   await refresh();
   toast(error ? "فشل: " + error.message : "✓ أُرسل أمر الجرس", !!error);
 }
 async function sendAnnounce() {
   const text = document.getElementById("annText").value.trim();
   if (!text) return toast("اكتب نص النداء أولًا", true);
-  const { error } = await db.from("commands").insert({ school_id: schoolId, type: "announce", payload: { text, delay: delayMin } });
+  const { error } = await db.from("commands").insert({ school_id: schoolId, type: "announce", payload: { text, delay: delayMin }, section_id: cmdTarget() });
   if (!error) document.getElementById("annText").value = "";
   await refresh(); showTab("announce");
   toast(error ? "فشل: " + error.message : "✓ أُرسل النداء", !!error);
 }
 async function activateSchedule(name) {
-  config.schedules.forEach(s => s.isActive = s.name === name);
+  const s0 = secObj() || config.sections[0];
+  (s0.schedules || []).forEach(s => s.isActive = s.name === name);
   await publishConfig("✓ تم تفعيل: " + name);
 }
 async function applyShift() {
   if (shiftMin === 0) return toast("لا إزاحة", true);
-  const s = config.schedules.find(x => x.isActive);
+  const s0 = secObj() || config.sections[0];
+  const s = (s0.schedules || []).find(x => x.isActive);
   if (!s) return toast("لا جدول نشط", true);
   s.events = (s.events || []).map(e => ({ ...e, startMinuteOfDay: Math.max(0, Math.min(1439, e.startMinuteOfDay + shiftMin)) }));
   const applied = shiftMin; shiftMin = 0;

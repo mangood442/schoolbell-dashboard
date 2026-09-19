@@ -257,7 +257,7 @@ document.getElementById("logoutBtn").onclick = async () => { await db.auth.signO
 async function loadAll() {
   const [a,b,c,d] = await Promise.all([
     db.from("schools").select("*").order("created_at"),
-    db.from("devices").select("id, school_id, name, app_version, last_seen_at"),
+    db.from("devices").select("id, school_id, name, app_version, last_seen_at, section_id"),
     db.from("invoices").select("id, school_id, amount, currency, period_months, status, created_at, paid_at").order("created_at",{ascending:false}).limit(200),
     db.from("activation_codes").select("code, school_id, used_at"),
   ]);
@@ -376,7 +376,15 @@ function openNewSchool() {
 }
 
 // ─── School detail ──────────────────────────────────────────────────────────
-let cur = null, cfg = { schedules:[] }, cfgVersion = 0, curSched = 0;
+let cur = null, cfg = { v:2, sections:[] }, cfgVersion = 0, curSched = 0, curSec = 0;
+function normalizeCfg(p){
+  const normSec = s => ({ id:s.id??null, name:s.name||"قسم", defaultSoundKey:s.defaultSoundKey||"bell1", prayer:s.prayer||null, schedules:Array.isArray(s.schedules)?s.schedules:[] });
+  if (p && Array.isArray(p.sections)) return { v:2, sections:p.sections.map(normSec) };
+  const scheds = p && Array.isArray(p.schedules) ? p.schedules : [];
+  return { v:2, sections:[normSec({ name:"عام", schedules:scheds })] };
+}
+function cfgSec(){ return cfg.sections[curSec]; }
+function cfgScheds(){ return cfgSec()?cfgSec().schedules:[]; }
 
 async function openSchool(id) {
   cur = schools.find(s=>s.id===id);
@@ -387,8 +395,10 @@ async function openSchool(id) {
     db.from("commands").select("id,type,payload,created_at,delivered_at").eq("school_id",id).order("id",{ascending:false}).limit(10),
   ]);
   cfgVersion = conf?.version||0;
-  cfg = conf?.payload && Array.isArray(conf.payload.schedules) ? conf.payload : { schedules:[] };
-  curSched = Math.max(0, cfg.schedules.findIndex(s=>s.isActive));
+  cfg = normalizeCfg(conf?.payload);
+  cfg.sections.forEach(sc=>{ if(sc.schedules.length===0) sc.schedules.push({name:"صباحي",isActive:true,events:[]}); });
+  curSec = 0;
+  curSched = Math.max(0, cfgScheds().findIndex(s=>s.isActive));
   document.getElementById("app").hidden = true;
   const el = document.getElementById("detail"); el.hidden = false;
   el.dataset.logs = JSON.stringify(logs||[]);
@@ -479,11 +489,15 @@ function renderDetail() {
     <!-- Remote schedule editor -->
     <div class="card">
       <div class="row" style="margin-bottom:12px">
-        <h2 style="flex:1;margin:0">الجداول — تحكم عن بُعد</h2>
-        <button class="ghost sm" onclick="addSchedule()">+ جدول</button>
+        <h2 style="flex:1;margin:0">الأقسام والجداول — تحكم عن بُعد</h2>
         <button class="primary" onclick="publishConfig()">💾 حفظ ونشر للتابلت</button>
       </div>
-      <div class="row" id="schedPills" style="margin-bottom:12px"></div>
+      <div class="row" id="sectionBar" style="margin-bottom:10px"></div>
+      <div class="row subtle" id="sectionMeta" style="margin-bottom:12px"></div>
+      <div class="row" style="margin-bottom:12px">
+        <div class="row" id="schedPills"></div>
+        <button class="ghost sm" onclick="addSchedule()">+ جدول</button>
+      </div>
       <div id="schedMeta"></div>
       <div style="overflow-x:auto">
         <table id="eventsTbl"><thead><tr><th>الوقت</th><th>الاسم</th><th>المدة</th><th>الأيام</th><th>النغمة</th><th>الصوت</th><th></th></tr></thead><tbody></tbody></table>
@@ -496,6 +510,10 @@ function renderDetail() {
       <!-- Remote control -->
       <div class="card">
         <h3>تحكم فوري عن بُعد</h3>
+        <div class="row" style="margin-bottom:8px">
+          <label class="muted">إلى</label>
+          <select id="annTarget">${targetOptions()}</select>
+        </div>
         <textarea id="annText" rows="2" placeholder="نص النداء (يُنطق بالعربية على المكبرات)…" style="width:100%"></textarea>
         <div class="row" style="margin-top:10px">
           <button class="primary" onclick="remoteAnnounce()">📢 إرسال النداء</button>
@@ -513,7 +531,7 @@ function renderDetail() {
         ${myDevices.length?myDevices.map(d=>`<div class="row" style="padding:7px 0;border-bottom:1px solid #EFF1F7">
           <span style="width:9px;height:9px;border-radius:50%;background:${isOnline(d)?"var(--green)":"#C9CFCB"}"></span>
           <span style="flex:1">${esc(d.name)} <span class="muted mono">${esc(d.app_version||"")}</span></span>
-          <span class="mono muted" dir="ltr" style="font-size:12px">${fmt(d.last_seen_at)}</span>
+          <select onchange="assignDevice('${d.id}', this.value)">${sectionOptions(d.section_id)}</select>
           <button class="ghost sm danger" onclick="removeDevice('${d.id}')">فصل</button></div>`).join(""):'<p class="muted">لا أجهزة مرتبطة بعد</p>'}
         <h3 style="margin-top:18px">آخر السجلّات</h3>
         <div style="max-height:220px;overflow-y:auto">
@@ -556,7 +574,7 @@ function renderDetail() {
       }).join("")||'<tr><td colspan="6" class="muted">لا فواتير</td></tr>'}</tbody></table>
     </div>
   `;
-  renderSchedPills();
+  renderSectionBar();
   renderSchoolUsers();
 }
 
@@ -580,40 +598,91 @@ async function newCode(){ const {data,error}=await db.rpc("new_activation_code",
   await loadAll(); renderDetail(); show("msg","✓ رمز جديد: "+data); }
 function copyCode(c){ navigator.clipboard?.writeText(c).then(()=>show("msg","✓ نُسخ الرمز: "+c)); }
 
-// ── Remote schedule editor ──
+// ── Sections ──
+function targetOptions(){ return `<option value="">كل المدرسة</option>` + cfg.sections.filter(s=>s.id).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join(""); }
+function sectionOptions(sel){ return `<option value="">كل المدرسة</option>` + cfg.sections.filter(s=>s.id).map(s=>`<option value="${s.id}" ${s.id===sel?"selected":""}>${esc(s.name)}</option>`).join(""); }
+function renderSectionBar() {
+  document.getElementById("sectionBar").innerHTML =
+    cfg.sections.map((s,i)=>`<button class="sched-pill ${i===curSec?"active":""}" onclick="pickSection(${i})">${esc(s.name)}</button>`).join("")
+    + `<button class="ghost sm" onclick="addSection()">+ قسم</button>`;
+  renderSectionMeta(); renderSchedPills();
+}
+function pickSection(i){ curSec=i; curSched=Math.max(0,cfgScheds().findIndex(s=>s.isActive)); renderSectionBar(); }
+function renderSectionMeta() {
+  const s = cfgSec(); const el = document.getElementById("sectionMeta");
+  if (!s) { el.innerHTML=""; return; }
+  const sounds = Object.entries(SOUNDS).map(([k,v])=>`<option value="${k}" ${s.defaultSoundKey===k?"selected":""}>${v}</option>`).join("");
+  el.innerHTML = `<label class="muted">الصوت الافتراضي للقسم</label>
+    <select onchange="cfgSec().defaultSoundKey=this.value">${sounds}</select>
+    <span style="flex:1"></span>
+    <button class="ghost sm" onclick="renameSection()">تعديل اسم القسم</button>
+    <button class="ghost sm danger" onclick="deleteSection()">حذف القسم</button>`;
+}
+async function addSection(){
+  const name=prompt("اسم القسم الجديد (مثال: الابتدائي):"); if(!name||!name.trim())return;
+  const {data,error}=await db.from("sections").insert({school_id:cur.id,name:name.trim(),sort_order:cfg.sections.length}).select("id").single();
+  if(error) return show("msg","فشل: "+error.message,true);
+  cfg.sections.push({id:data.id,name:name.trim(),defaultSoundKey:"bell1",prayer:null,schedules:[{name:"صباحي",isActive:true,events:[]}]});
+  curSec=cfg.sections.length-1; curSched=0; renderSectionBar(); publishConfig(true);
+}
+async function renameSection(){
+  const s=cfgSec(); const name=prompt("اسم القسم:",s.name);
+  if(!name||!name.trim()||name.trim()===s.name)return;
+  if(s.id){ const {error}=await db.from("sections").update({name:name.trim()}).eq("id",s.id); if(error) return show("msg","فشل: "+error.message,true); }
+  s.name=name.trim(); renderSectionBar(); publishConfig(true);
+}
+async function deleteSection(){
+  if(cfg.sections.length<=1)return show("msg","يجب إبقاء قسم واحد على الأقل",true);
+  const s=cfgSec();
+  if(s.id){ const {count}=await db.from("devices").select("id",{count:"exact",head:true}).eq("section_id",s.id);
+    if(count) return show("msg","لا يمكن حذف قسم مرتبط بأجهزة — أعد ربط الأجهزة أولًا",true); }
+  if(!confirm(`حذف قسم "${s.name}" وكل جداوله؟`))return;
+  if(s.id){ const {error}=await db.from("sections").delete().eq("id",s.id); if(error) return show("msg","فشل: "+error.message,true); }
+  cfg.sections.splice(curSec,1); curSec=0; curSched=Math.max(0,cfgScheds().findIndex(x=>x.isActive)); renderSectionBar(); publishConfig(true);
+}
+async function assignDevice(id, section){
+  const {error}=await db.rpc("set_device_section",{p_device:id,p_section:section||null});
+  if(error) return show("msg","فشل: "+error.message,true);
+  const d=devices.find(x=>x.id===id); if(d) d.section_id=section||null;
+  show("msg","✓ حُدّث قسم الجهاز");
+}
+
+// ── Remote schedule editor (scoped to the current section) ──
 function renderSchedPills() {
-  document.getElementById("schedPills").innerHTML = cfg.schedules.map((s,i)=>
+  document.getElementById("schedPills").innerHTML = cfgScheds().map((s,i)=>
     `<button class="sched-pill ${i===curSched?"active":""}" onclick="pickSched(${i})">${esc(s.name)}${s.isActive?" ✓":""}</button>`).join("")
     || '<span class="muted">لا جداول — أضف جدولًا</span>';
   renderSchedMeta(); renderEvents();
 }
 function pickSched(i){ curSched=i; renderSchedPills(); }
 function renderSchedMeta() {
-  const s = cfg.schedules[curSched];
+  const s = cfgScheds()[curSched];
   const el = document.getElementById("schedMeta");
   if (!s) { el.innerHTML=""; return; }
   el.innerHTML = `<div class="row subtle" style="margin-bottom:12px">
-    <label class="muted">الاسم</label><input value="${esc(s.name)}" onchange="cfg.schedules[${curSched}].name=this.value;renderSchedPills()" style="width:200px">
+    <label class="muted">الاسم</label><input value="${esc(s.name)}" onchange="cfgScheds()[${curSched}].name=this.value;renderSchedPills()" style="width:200px">
     <label><input type="checkbox" ${s.isActive?"checked":""} onchange="setActiveSched(${curSched},this.checked)"> الجدول النشط</label>
     <span style="flex:1"></span>
     <button class="ghost sm danger" onclick="delSchedule(${curSched})">حذف الجدول</button></div>`;
 }
-function setActiveSched(i,on){ cfg.schedules.forEach((x,j)=>x.isActive=(on&&j===i)); renderSchedPills(); }
-function delSchedule(i){ if(cfg.schedules.length<=1)return show("msg","يجب إبقاء جدول واحد",true);
-  if(confirm("حذف "+cfg.schedules[i].name+"؟")){ cfg.schedules.splice(i,1); curSched=0; renderSchedPills(); } }
+function setActiveSched(i,on){ cfgScheds().forEach((x,j)=>x.isActive=(on&&j===i)); renderSchedPills(); }
+function delSchedule(i){ if(cfgScheds().length<=1)return show("msg","يجب إبقاء جدول واحد",true);
+  if(confirm("حذف "+cfgScheds()[i].name+"؟")){ cfgScheds().splice(i,1); curSched=0; renderSchedPills(); } }
 function addSchedule(){ const n=prompt("اسم الجدول:","جدول جديد"); if(!n)return;
-  cfg.schedules.push({name:n,isActive:cfg.schedules.length===0,events:[]}); curSched=cfg.schedules.length-1; renderSchedPills(); }
-function addEvent(){ const s=cfg.schedules[curSched]; if(!s)return show("msg","أضف جدولًا أولًا",true);
-  s.events.push({name:"حدث جديد",startMinuteOfDay:420,durationMin:45,daysOfWeek:0b1001111,volume:1,enabled:true,sortOrder:0,soundKey:"bell1"}); renderEvents(); }
+  cfgScheds().push({name:n,isActive:cfgScheds().length===0,events:[]}); curSched=cfgScheds().length-1; renderSchedPills(); }
+function addEvent(){ const s=cfgScheds()[curSched]; if(!s)return show("msg","أضف جدولًا أولًا",true);
+  s.events.push({name:"حدث جديد",startMinuteOfDay:420,durationMin:45,daysOfWeek:0b1001111,volume:1,enabled:true,sortOrder:0,soundKey:""}); renderEvents(); }
 function renderEvents() {
-  const s = cfg.schedules[curSched];
+  const s = cfgScheds()[curSched];
   const body = document.querySelector("#eventsTbl tbody");
   if (!s) { body.innerHTML=""; return; }
   s.events.sort((a,b)=>a.startMinuteOfDay-b.startMinuteOfDay);
+  const defName = SOUNDS[cfgSec()?.defaultSoundKey] || "الافتراضي";
   body.innerHTML = s.events.map((e,i)=>{
     const t = String(Math.floor(e.startMinuteOfDay/60)).padStart(2,"0")+":"+String(e.startMinuteOfDay%60).padStart(2,"0");
     const days = DAY_ORDER.map(bit=>`<label><input type="checkbox" ${(e.daysOfWeek&(1<<bit))?"checked":""} onchange="toggleDay(${i},${bit},this.checked)">${DAY_NAMES[bit]}</label>`).join("");
-    const sounds = Object.entries(SOUNDS).map(([k,v])=>`<option value="${k}" ${e.soundKey===k?"selected":""}>${v}</option>`).join("");
+    const sounds = `<option value="" ${!e.soundKey?"selected":""}>افتراضي القسم (${esc(defName)})</option>` +
+      Object.entries(SOUNDS).map(([k,v])=>`<option value="${k}" ${e.soundKey===k?"selected":""}>${v}</option>`).join("");
     return `<tr>
       <td><input type="time" value="${t}" onchange="setTime(${i},this.value)" style="width:120px"></td>
       <td><input value="${esc(e.name)}" onchange="ev(${i},'name',this.value)"></td>
@@ -624,35 +693,39 @@ function renderEvents() {
       <td><button class="ghost sm danger" onclick="delEvent(${i})">✕</button></td></tr>`;
   }).join("") || '<tr><td colspan="7" class="muted">لا أحداث — أضف حدثًا</td></tr>';
 }
-function ev(i,k,v){ cfg.schedules[curSched].events[i][k]=v; }
-function setTime(i,v){ const [h,m]=v.split(":").map(Number); cfg.schedules[curSched].events[i].startMinuteOfDay=h*60+m; renderEvents(); }
-function toggleDay(i,bit,on){ const e=cfg.schedules[curSched].events[i]; e.daysOfWeek = on ? (e.daysOfWeek|(1<<bit)) : (e.daysOfWeek&~(1<<bit)); }
-function delEvent(i){ cfg.schedules[curSched].events.splice(i,1); renderEvents(); }
+function ev(i,k,v){ cfgScheds()[curSched].events[i][k]=v; }
+function setTime(i,v){ const [h,m]=v.split(":").map(Number); cfgScheds()[curSched].events[i].startMinuteOfDay=h*60+m; renderEvents(); }
+function toggleDay(i,bit,on){ const e=cfgScheds()[curSched].events[i]; e.daysOfWeek = on ? (e.daysOfWeek|(1<<bit)) : (e.daysOfWeek&~(1<<bit)); }
+function delEvent(i){ cfgScheds()[curSched].events.splice(i,1); renderEvents(); }
 
-async function publishConfig() {
-  if (cfg.schedules.length && !cfg.schedules.some(s=>s.isActive)) cfg.schedules[0].isActive=true;
+async function publishConfig(silent) {
+  cfg.sections.forEach(sc=>{ if(sc.schedules.length && !sc.schedules.some(s=>s.isActive)) sc.schedules[0].isActive=true; });
   const { error } = await db.from("school_configs")
     .update({ payload:cfg, version:cfgVersion+1, updated_at:new Date().toISOString() })
     .eq("school_id", cur.id);
   if (error) return show("msg","فشل النشر: "+error.message, true);
   cfgVersion++; audit("schedule.publish", cur.id, `${esc(cur.name)} — الإصدار ${cfgVersion}`);
-  show("msg",`✓ نُشر الجدول (الإصدار ${cfgVersion}) — سيصل التابلت خلال دقائق`);
+  if(!silent) show("msg",`✓ نُشر (الإصدار ${cfgVersion}) — سيصل التابلت خلال دقائق`);
 }
 
 // ── Remote control ──
+function annTargetVal(){ return document.getElementById("annTarget")?.value || null; }
+function annTargetName(){ const el=document.getElementById("annTarget"); return el && el.value ? el.options[el.selectedIndex].text : "كل المدرسة"; }
 async function remoteAnnounce() {
   const text = document.getElementById("annText").value.trim();
   if (!text) return show("msg","اكتب نص النداء",true);
-  const { error } = await db.from("commands").insert({ school_id:cur.id, type:"announce", payload:{text,delay:0} });
+  const target = annTargetVal();
+  const { error } = await db.from("commands").insert({ school_id:cur.id, type:"announce", payload:{text,delay:0}, section_id:target });
   if (error) return show("msg","فشل: "+error.message,true);
-  audit("command.announce", cur.id, `${esc(cur.name)}: "${text.slice(0,40)}"`);
-  document.getElementById("annText").value=""; await refreshCmds(); show("msg","✓ أُرسل النداء");
+  audit("command.announce", cur.id, `${esc(cur.name)} → ${annTargetName()}: "${text.slice(0,40)}"`);
+  document.getElementById("annText").value=""; await refreshCmds(); show("msg","✓ أُرسل النداء إلى "+annTargetName());
 }
 async function remoteBell() {
-  const { error } = await db.from("commands").insert({ school_id:cur.id, type:"bell", payload:{} });
+  const target = annTargetVal();
+  const { error } = await db.from("commands").insert({ school_id:cur.id, type:"bell", payload:{}, section_id:target });
   if (error) return show("msg","فشل: "+error.message,true);
-  audit("command.bell", cur.id, esc(cur.name));
-  await refreshCmds(); show("msg","✓ أُرسل أمر الجرس");
+  audit("command.bell", cur.id, `${esc(cur.name)} → ${annTargetName()}`);
+  await refreshCmds(); show("msg","✓ أُرسل أمر الجرس إلى "+annTargetName());
 }
 async function refreshCmds() {
   const { data } = await db.from("commands").select("id,type,payload,created_at,delivered_at").eq("school_id",cur.id).order("id",{ascending:false}).limit(10);
