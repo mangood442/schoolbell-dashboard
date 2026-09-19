@@ -215,6 +215,10 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const DAY_NAMES = ["ن","ث","ر","ع","خ","ج","س"];   // ISO bit0=Mon..bit6=Sun
 const DAY_ORDER = [6,0,1,2,3,4,5];                  // display Sun first
 const SOUNDS = { bell1:"جرس كهربائي", bell2:"جرس برونزي", bell3:"لحن ترحيبي", bell4:"دينغ دونغ", bell5:"غونغ هادئ" };
+const ADHAN_METHODS = { UMM_AL_QURA:"أم القرى (السعودية)", MUSLIM_WORLD_LEAGUE:"رابطة العالم الإسلامي", EGYPTIAN:"الهيئة المصرية", KARACHI:"كراتشي", DUBAI:"دبي", QATAR:"قطر", KUWAIT:"الكويت" };
+const CITIES = { "مكة المكرمة":[21.3891,39.8579], "الرياض":[24.7136,46.6753], "جدة":[21.4858,39.1925], "الدمام":[26.4207,50.0888], "المدينة المنورة":[24.5247,39.5692], "أبها":[18.2164,42.5053], "تبوك":[28.3838,36.5550] };
+const PRAYER_NAMES = ["الفجر","الظهر","العصر","المغرب","العشاء"];
+function defPrayer(){ return { enabled:true, latitude:24.7136, longitude:46.6753, method:"UMM_AL_QURA", adhanMask:0b11111, adhanSoundKey:"bell2", silenceAfterMin:10 }; }
 const DAY_MS = 86400000;
 
 let schools = [], devices = [], invoices = [], codes = [], PLANS = null;
@@ -504,6 +508,7 @@ function renderDetail() {
       </div>
       <button class="ghost sm" style="margin-top:10px" onclick="addEvent()">+ إضافة حدث</button>
       <p class="muted">بعد الحفظ يسحب التابلت الجدول خلال ≤ 5 دقائق (أو فورًا بزر "مزامنة الآن").</p>
+      <div id="prayerBox" style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px"></div>
     </div>
 
     <div class="grid2">
@@ -652,8 +657,39 @@ function renderSchedPills() {
   document.getElementById("schedPills").innerHTML = cfgScheds().map((s,i)=>
     `<button class="sched-pill ${i===curSched?"active":""}" onclick="pickSched(${i})">${esc(s.name)}${s.isActive?" ✓":""}</button>`).join("")
     || '<span class="muted">لا جداول — أضف جدولًا</span>';
-  renderSchedMeta(); renderEvents();
+  renderSchedMeta(); renderEvents(); renderPrayer();
 }
+
+// ── Per-section prayer (adhan) ──
+function renderPrayer() {
+  const box = document.getElementById("prayerBox");
+  if (!box || !cfgSec()) return;
+  const p = cfgSec().prayer;
+  const head = `<div class="row" style="margin-bottom:10px"><h3 style="flex:1;margin:0">🕌 أذان القسم «${esc(cfgSec().name)}»</h3>
+    <label><input type="checkbox" ${p?"checked":""} onchange="togglePrayer(this.checked)"> إعدادات أذان مستقلة</label></div>`;
+  if (!p) { box.innerHTML = head + `<p class="muted">القسم يستخدم إعدادات الأذان المحفوظة على التابلت. فعّل الخيار لضبط أذان خاص بالقسم.</p>`; return; }
+  const methodOpts = Object.entries(ADHAN_METHODS).map(([k,v])=>`<option value="${k}" ${p.method===k?"selected":""}>${v}</option>`).join("");
+  const cityOpts = Object.keys(CITIES).map(c=>`<option value="${c}">${c}</option>`).join("");
+  const soundOpts = Object.entries(SOUNDS).map(([k,v])=>`<option value="${k}" ${p.adhanSoundKey===k?"selected":""}>${v}</option>`).join("");
+  const prayerChecks = PRAYER_NAMES.map((n,i)=>`<label style="white-space:nowrap"><input type="checkbox" ${(p.adhanMask&(1<<i))?"checked":""} onchange="togglePrayerBit(${i},this.checked)"> ${n}</label>`).join(" ");
+  box.innerHTML = head + `
+    <div class="row subtle" style="gap:12px;margin-bottom:10px">
+      <label><input type="checkbox" ${p.enabled?"checked":""} onchange="setPrayer('enabled',this.checked)"> تفعيل الأذان</label>
+      <label class="muted">المدينة</label><select onchange="pickCity(this.value)"><option value="">— اختر —</option>${cityOpts}</select>
+      <label class="muted">خط العرض</label><input type="number" step="0.0001" value="${p.latitude}" style="width:100px" onchange="setPrayer('latitude',+this.value)">
+      <label class="muted">خط الطول</label><input type="number" step="0.0001" value="${p.longitude}" style="width:100px" onchange="setPrayer('longitude',+this.value)">
+    </div>
+    <div class="row" style="gap:12px;margin-bottom:10px">
+      <label class="muted">طريقة الحساب</label><select onchange="setPrayer('method',this.value)">${methodOpts}</select>
+      <label class="muted">صوت الأذان</label><select onchange="setPrayer('adhanSoundKey',this.value)">${soundOpts}</select>
+      <label class="muted">إسكات الجرس بعد الأذان (د)</label><input type="number" min="0" max="60" value="${p.silenceAfterMin}" style="width:70px" onchange="setPrayer('silenceAfterMin',Math.max(0,+this.value||0))">
+    </div>
+    <div class="row" style="gap:12px"><span class="muted">الصلوات المفعّلة:</span>${prayerChecks}</div>`;
+}
+function togglePrayer(on){ cfgSec().prayer = on ? defPrayer() : null; renderPrayer(); }
+function setPrayer(k,v){ if(cfgSec().prayer) cfgSec().prayer[k]=v; }
+function togglePrayerBit(i,on){ const p=cfgSec().prayer; if(!p)return; p.adhanMask = on ? (p.adhanMask|(1<<i)) : (p.adhanMask&~(1<<i)); }
+function pickCity(name){ const c=CITIES[name]; if(Array.isArray(c)&&cfgSec().prayer){ cfgSec().prayer.latitude=c[0]; cfgSec().prayer.longitude=c[1]; renderPrayer(); } }
 function pickSched(i){ curSched=i; renderSchedPills(); }
 function renderSchedMeta() {
   const s = cfgScheds()[curSched];
