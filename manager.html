@@ -134,7 +134,10 @@ async function logout() { await db.auth.signOut(); location.reload(); }
 async function init() {
   const { data: { session } } = await db.auth.getSession();
   if (!session) return;
-  const { data: m } = await db.from("school_users").select("school_id").maybeSingle();
+  // Scope to the signed-in user: super admins see all membership rows via RLS,
+  // so an unscoped maybeSingle() errors on schools with more than one account.
+  const { data: m } = await db.from("school_users")
+    .select("school_id").eq("user_id", session.user.id).maybeSingle();
   if (!m) return show("loginMsg", "الحساب غير مرتبط بمدرسة.", true);
   schoolId = m.school_id;
   document.getElementById("login").hidden = true;

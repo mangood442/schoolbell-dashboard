@@ -210,8 +210,11 @@ async function login() {
 async function init() {
   const { data: { session } } = await db.auth.getSession();
   if (!session) return;
-  const { data: membership } = await db.from("school_users").select("school_id").maybeSingle();
-  if (!membership) return show("loginMsg", "هذا الحساب غير مرتبط بمدرسة. تواصل مع مزوّد الخدمة.", true);
+  // Scope to the signed-in user: super admins can see every membership row via
+  // RLS, so without this filter maybeSingle() errors on multi-account schools.
+  const { data: membership } = await db.from("school_users")
+    .select("school_id").eq("user_id", session.user.id).maybeSingle();
+  if (!membership) return showUnlinked();
   schoolId = membership.school_id;
 
   const { data: school } = await db.from("schools").select("name, plan, subscription_until").maybeSingle();
@@ -601,6 +604,14 @@ function show(id, text, isError) {
   const el = document.getElementById(id);
   el.textContent = text; el.className = "msg " + (isError ? "err" : "ok");
   setTimeout(() => { el.className = "msg"; }, 6000);
+}
+// Unlinked account: guide new schools to self-onboarding instead of a dead end.
+function showUnlinked() {
+  const el = document.getElementById("loginMsg");
+  el.className = "msg err";
+  el.innerHTML = 'هذا الحساب غير مرتبط بمدرسة. مدرسة جديدة؟ ' +
+    '<a href="./signup.html" style="color:inherit;font-weight:700;text-decoration:underline">ابدأ تجربة مجانية 14 يومًا</a>' +
+    '، أو تواصل مع مزوّد الخدمة.';
 }
 function td(child) { const c = document.createElement("td"); c.appendChild(child); return c; }
 function inp(value, onChange, width) {
