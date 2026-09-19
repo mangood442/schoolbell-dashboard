@@ -755,13 +755,27 @@ async function remoteAnnounce() {
   const target = annTargetVal();
   const { error } = await db.from("commands").insert({ school_id:cur.id, type:"announce", payload:{text,delay:0}, section_id:target });
   if (error) return show("msg","فشل: "+error.message,true);
+  wakeTablets(cur.id);
   audit("command.announce", cur.id, `${esc(cur.name)} → ${annTargetName()}: "${text.slice(0,40)}"`);
   document.getElementById("annText").value=""; await refreshCmds(); show("msg","✓ أُرسل النداء إلى "+annTargetName());
+}
+// Nudge the school's tablets to sync immediately (instant remote command).
+function wakeTablets(sid) {
+  try {
+    const ch = db.channel("school:" + sid);
+    ch.subscribe(s => {
+      if (s === "SUBSCRIBED") {
+        ch.send({ type: "broadcast", event: "wake", payload: {} });
+        setTimeout(() => db.removeChannel(ch), 1500);
+      }
+    });
+  } catch (_) { /* realtime optional; the 25s poll still delivers */ }
 }
 async function remoteBell() {
   const target = annTargetVal();
   const { error } = await db.from("commands").insert({ school_id:cur.id, type:"bell", payload:{}, section_id:target });
   if (error) return show("msg","فشل: "+error.message,true);
+  wakeTablets(cur.id);
   audit("command.bell", cur.id, `${esc(cur.name)} → ${annTargetName()}`);
   await refreshCmds(); show("msg","✓ أُرسل أمر الجرس إلى "+annTargetName());
 }

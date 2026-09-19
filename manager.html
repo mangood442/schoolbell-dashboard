@@ -343,14 +343,27 @@ function bumpShift(d) { shiftMin += d; document.getElementById("shiftVal").textC
 function cmdTarget() { return curSec >= 0 ? (config.sections[curSec].id || null) : null; }
 async function sendBell() {
   const { error } = await db.from("commands").insert({ school_id: schoolId, type: "bell", payload: {}, section_id: cmdTarget() });
+  if (!error) wakeTablets(schoolId);
   await refresh();
   toast(error ? "فشل: " + error.message : "✓ أُرسل أمر الجرس", !!error);
+}
+// Nudge the school's tablets to sync immediately (instant remote command).
+function wakeTablets(sid) {
+  try {
+    const ch = db.channel("school:" + sid);
+    ch.subscribe(s => {
+      if (s === "SUBSCRIBED") {
+        ch.send({ type: "broadcast", event: "wake", payload: {} });
+        setTimeout(() => db.removeChannel(ch), 1500);
+      }
+    });
+  } catch (_) { /* realtime optional; the 25s poll still delivers */ }
 }
 async function sendAnnounce() {
   const text = document.getElementById("annText").value.trim();
   if (!text) return toast("اكتب نص النداء أولًا", true);
   const { error } = await db.from("commands").insert({ school_id: schoolId, type: "announce", payload: { text, delay: delayMin }, section_id: cmdTarget() });
-  if (!error) document.getElementById("annText").value = "";
+  if (!error) { wakeTablets(schoolId); document.getElementById("annText").value = ""; }
   await refresh(); showTab("announce");
   toast(error ? "فشل: " + error.message : "✓ أُرسل النداء", !!error);
 }
