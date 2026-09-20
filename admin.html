@@ -109,6 +109,7 @@
       <button data-tab="invoices" onclick="showTab('invoices')">🧾 الفواتير</button>
       <button data-tab="plans" onclick="showTab('plans')">📦 الباقات</button>
       <button data-tab="audit" onclick="showTab('audit')">📜 سجل العمليات</button>
+      <button data-tab="account" onclick="showTab('account')">👤 حسابي</button>
     </div>
 
     <!-- Overview -->
@@ -200,6 +201,23 @@
         <div id="auditBody"><p class="muted">…</p></div>
       </div>
     </section>
+
+    <section id="tab-account" hidden>
+      <div class="card" style="display:flex;flex-direction:column;gap:14px;max-width:520px">
+        <h2 style="margin:0">حسابي</h2>
+        <div class="row"><label class="muted" style="width:130px">البريد</label><span id="accEmail" class="mono"></span></div>
+        <div class="row"><label class="muted" style="width:130px">الدور</label><span>المزوّد (مشرف عام)</span></div>
+        <label class="muted">الاسم الكامل</label><input id="accName" placeholder="اسمك الكامل">
+        <label class="muted">رقم الجوال</label><input id="accPhone" dir="ltr" placeholder="05xxxxxxxx">
+        <button class="primary" onclick="saveProfile()">💾 حفظ البيانات</button>
+        <hr style="border:none;border-top:1px solid var(--line);margin:4px 0">
+        <h2 style="margin:0;font-size:16px">تغيير كلمة المرور</h2>
+        <input id="accPw1" type="password" dir="ltr" placeholder="كلمة مرور جديدة (6 أحرف على الأقل)">
+        <input id="accPw2" type="password" dir="ltr" placeholder="تأكيد كلمة المرور">
+        <button class="primary" onclick="changePassword()">🔑 تحديث كلمة المرور</button>
+        <p class="muted" id="accMsg"></p>
+      </div>
+    </section>
   </div>
 
   <!-- ── School detail view ── -->
@@ -250,6 +268,7 @@ async function init() {
   const { data: sa } = await db.from("super_admins").select("user_id").maybeSingle();
   if (!sa) return show("loginMsg", "هذا الحساب ليس مشرفًا عامًا.", true);
   actorId = session.user.id;
+  myEmail = session.user.email || "";
   document.getElementById("login").hidden = true;
   document.getElementById("app").hidden = false;
   document.getElementById("logoutBtn").hidden = false;
@@ -859,7 +878,7 @@ function showTab(name) {
   document.getElementById("detail").hidden = true;
   document.getElementById("app").hidden = false;
   document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("active",b.dataset.tab===name));
-  ["overview","schools","devices","alerts","invoices","plans","audit"].forEach(t=>document.getElementById("tab-"+t).hidden = t!==name);
+  ["overview","schools","devices","alerts","invoices","plans","audit","account"].forEach(t=>document.getElementById("tab-"+t).hidden = t!==name);
   if(name==="overview") renderOverview();
   if(name==="schools") renderSchools();
   if(name==="devices") loadDevices();
@@ -867,6 +886,30 @@ function showTab(name) {
   if(name==="invoices") loadInvoices();
   if(name==="plans") renderPlans();
   if(name==="audit") renderAudit();
+  if(name==="account") loadAccount();
+}
+
+let myEmail = "";
+async function loadAccount() {
+  document.getElementById("accEmail").textContent = myEmail || "";
+  const { data } = await db.from("profiles").select("full_name, phone").eq("user_id", actorId).maybeSingle();
+  document.getElementById("accName").value = data?.full_name || "";
+  document.getElementById("accPhone").value = data?.phone || "";
+}
+async function saveProfile() {
+  const full_name = document.getElementById("accName").value.trim();
+  const phone = document.getElementById("accPhone").value.trim();
+  const { error } = await db.from("profiles").upsert({ user_id: actorId, full_name, phone, updated_at: new Date().toISOString() });
+  document.getElementById("accMsg").textContent = error ? "فشل: " + error.message : "✓ حُفظت بياناتك.";
+}
+async function changePassword() {
+  const p1 = document.getElementById("accPw1").value, p2 = document.getElementById("accPw2").value;
+  const msg = document.getElementById("accMsg");
+  if (p1.length < 6) { msg.textContent = "كلمة المرور 6 أحرف على الأقل."; return; }
+  if (p1 !== p2) { msg.textContent = "كلمتا المرور غير متطابقتين."; return; }
+  const { error } = await db.auth.updateUser({ password: p1 });
+  msg.textContent = error ? "فشل: " + error.message : "✓ تم تحديث كلمة المرور.";
+  if (!error) { document.getElementById("accPw1").value = ""; document.getElementById("accPw2").value = ""; }
 }
 
 const AUDIT_LABELS = {

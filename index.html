@@ -98,6 +98,8 @@
       <button data-tab="logs" onclick="showTab('logs')">📋 السجلات</button>
       <button data-tab="announce" onclick="showTab('announce')">📢 النداء</button>
       <button data-tab="devices" onclick="showTab('devices')">📱 الأجهزة</button>
+      <button data-tab="sounds" onclick="showTab('sounds')">🔊 الأصوات</button>
+      <button data-tab="account" onclick="showTab('account')">👤 حسابي</button>
     </div>
     <div class="msg" id="msg"></div>
 
@@ -124,7 +126,7 @@
         <tbody></tbody>
       </table>
       <button class="ghost" style="margin-top:10px" onclick="addEvent()">+ إضافة حدث</button>
-      <p class="muted">بعد الحفظ يسحب التابلت الجداول خلال 5 دقائق كحد أقصى (أو فورًا بزر "مزامنة الآن" في التطبيق).</p>
+      <p class="muted">بعد الحفظ يسحب التابلت الجداول خلال ثوانٍ (فورًا عبر الاتصال اللحظي، أو خلال 25 ثانية كحد أقصى).</p>
       <div id="prayerBox" style="margin-top:20px;border-top:1px solid var(--line);padding-top:16px"></div>
     </section>
 
@@ -163,7 +165,7 @@
         <button class="primary" onclick="sendAnnounce()">إرسال النداء</button>
         <button class="ghost" onclick="sendBell()">🔔 جرس الآن</button>
       </div>
-      <p class="muted">يصل الأمر للتابلت في المزامنة التالية (خلال 5 دقائق كحد أقصى).</p>
+      <p class="muted">يصل الأمر للتابلت فورًا (خلال ثوانٍ عبر الاتصال اللحظي)، مع مزامنة احتياطية كل 25 ثانية.</p>
       <table style="margin-top:14px"><thead><tr><th>الأمر</th><th>أُنشئ</th><th>سُلّم</th></tr></thead>
       <tbody id="cmdBody"></tbody></table>
     </section>
@@ -174,6 +176,40 @@
       <p class="muted" style="margin-top:-8px">اربط كل جهاز بقسمه ليرنّ جدول ذلك القسم فقط، أو اتركه «كل المدرسة» ليرنّ اتحاد جداول الأقسام.</p>
       <table><thead><tr><th>الاسم</th><th>القسم</th><th>الإصدار</th><th>آخر ظهور</th><th></th></tr></thead>
       <tbody id="devicesBody"></tbody></table>
+    </section>
+
+    <!-- Sounds -->
+    <section id="tab-sounds" class="card" style="display:none">
+      <div class="row" style="margin-bottom:6px"><h2 style="flex:1">مكتبة الأصوات</h2>
+        <label class="ghost" style="cursor:pointer">⬆ رفع صوت
+          <input type="file" id="soundFile" accept="audio/*" style="display:none" onchange="uploadSound(this.files[0])">
+        </label>
+      </div>
+      <p class="muted" style="margin-top:-4px">استمع للأصوات، وارفع أصوات مدرستك (MP3/WAV، حتى 5MB). اختر أيًّا منها لأي حدث أو للأذان أو كصوت افتراضي للقسم.</p>
+      <div id="soundLibList"></div>
+      <p class="muted" id="soundMsg"></p>
+    </section>
+
+    <!-- Account -->
+    <section id="tab-account" class="card" style="display:none">
+      <h2>حسابي</h2>
+      <div id="accountBox" style="display:flex;flex-direction:column;gap:14px;max-width:520px">
+        <div class="row"><label class="muted" style="width:130px">البريد</label><span id="accEmail" class="mono"></span></div>
+        <div class="row"><label class="muted" style="width:130px">الدور</label><span id="accRole"></span></div>
+        <div class="row"><label class="muted" style="width:130px">الاسم الكامل</label>
+          <input id="accName" style="flex:1;min-width:200px" placeholder="اسمك الكامل"></div>
+        <div class="row"><label class="muted" style="width:130px">رقم الجوال</label>
+          <input id="accPhone" dir="ltr" style="flex:1;min-width:200px" placeholder="05xxxxxxxx"></div>
+        <div class="row"><span style="width:130px"></span><button class="primary" onclick="saveProfile()">💾 حفظ البيانات</button></div>
+        <hr style="border:none;border-top:1px solid var(--line);margin:6px 0">
+        <h2 style="font-size:16px">تغيير كلمة المرور</h2>
+        <div class="row"><label class="muted" style="width:130px">كلمة مرور جديدة</label>
+          <input id="accPw1" type="password" dir="ltr" style="flex:1;min-width:200px" placeholder="6 أحرف على الأقل"></div>
+        <div class="row"><label class="muted" style="width:130px">تأكيد</label>
+          <input id="accPw2" type="password" dir="ltr" style="flex:1;min-width:200px" placeholder="أعد كتابتها"></div>
+        <div class="row"><span style="width:130px"></span><button class="primary" onclick="changePassword()">🔑 تحديث كلمة المرور</button></div>
+        <p class="muted" id="accMsg"></p>
+      </div>
     </section>
   </div>
 </main>
@@ -187,12 +223,41 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const DAY_NAMES = ["ن", "ث", "أر", "خ", "ج", "س", "ح"]; // ISO: الاثنين..الأحد (bit 0 = الاثنين)
 const DAY_ORDER = [6, 0, 1, 2, 3, 4, 5];                 // عرضًا: الأحد أولاً
 const SOUNDS = { bell1: "جرس كهربائي", bell2: "جرس برونزي", bell3: "لحن ترحيبي", bell4: "دينغ دونغ", bell5: "غونغ هادئ" };
+
+// Cloud sound library (shared demo + this school's uploads). Event/adhan sound
+// keys reference a library entry as "url:<publicUrl>".
+let library = [];
+const libKey = l => "url:" + l.url;
+function soundName(key) {
+  if (!key) return "الافتراضي";
+  if (SOUNDS[key]) return SOUNDS[key];
+  if (key.startsWith("url:")) return (library.find(l => libKey(l) === key) || {}).name || "صوت من المكتبة";
+  return key;
+}
+function fillSoundSelect(sel, selected) {
+  sel.innerHTML = "";
+  Object.entries(SOUNDS).forEach(([k, v]) => sel.add(new Option(v, k)));
+  if (library.length) {
+    const og = document.createElement("optgroup"); og.label = "مكتبة الأصوات";
+    library.forEach(l => og.appendChild(new Option(l.name, libKey(l))));
+    sel.appendChild(og);
+  }
+  if (selected && !SOUNDS[selected] && !library.some(l => libKey(l) === selected)) sel.add(new Option(selected, selected));
+  sel.value = selected;
+}
+function soundOptionsHTML(selected) {
+  let h = Object.entries(SOUNDS).map(([k, v]) => `<option value="${k}" ${selected === k ? "selected" : ""}>${v}</option>`).join("");
+  if (library.length) h += `<optgroup label="مكتبة الأصوات">` +
+    library.map(l => `<option value="${esc(libKey(l))}" ${selected === libKey(l) ? "selected" : ""}>${esc(l.name)}</option>`).join("") + `</optgroup>`;
+  return h;
+}
 const ADHAN_METHODS = { UMM_AL_QURA: "أم القرى (السعودية)", MUSLIM_WORLD_LEAGUE: "رابطة العالم الإسلامي", EGYPTIAN: "الهيئة المصرية", KARACHI: "كراتشي", DUBAI: "دبي", QATAR: "قطر", KUWAIT: "الكويت" };
 const CITIES = { "": "— اختر مدينة —", "مكة المكرمة": [21.3891, 39.8579], "الرياض": [24.7136, 46.6753], "جدة": [21.4858, 39.1925], "الدمام": [26.4207, 50.0888], "المدينة المنورة": [24.5247, 39.5692], "أبها": [18.2164, 42.5053], "تبوك": [28.3838, 36.5550] };
 const PRAYER_NAMES = ["الفجر", "الظهر", "العصر", "المغرب", "العشاء"];
 function defPrayer() { return { enabled: true, latitude: 24.7136, longitude: 46.6753, method: "UMM_AL_QURA", adhanMask: 0b11111, adhanSoundKey: "bell2", silenceAfterMin: 10 }; }
 
 let schoolId = null, config = { v: 2, sections: [] }, configVersion = 0;
+let me = null, myRole = "admin";
 let curSection = 0, curSched = 0;
 function sec() { return config.sections[curSection]; }
 function secScheds() { return sec() ? sec().schedules : []; }
@@ -210,12 +275,14 @@ async function login() {
 async function init() {
   const { data: { session } } = await db.auth.getSession();
   if (!session) return;
+  me = session.user;
   // Scope to the signed-in user: super admins can see every membership row via
   // RLS, so without this filter maybeSingle() errors on multi-account schools.
   const { data: membership } = await db.from("school_users")
-    .select("school_id").eq("user_id", session.user.id).maybeSingle();
+    .select("school_id, role").eq("user_id", session.user.id).maybeSingle();
   if (!membership) return showUnlinked();
   schoolId = membership.school_id;
+  myRole = membership.role || "admin";
 
   const { data: school } = await db.from("schools").select("name, plan, subscription_until").maybeSingle();
   document.getElementById("schoolName").textContent =
@@ -224,6 +291,7 @@ async function init() {
   document.getElementById("login").style.display = "none";
   document.getElementById("app").style.display = "block";
   document.getElementById("logoutBtn").style.display = "inline-block";
+  await loadLibrary();
   await loadConfig();
   loadLogs(); loadDevices(); loadCommands();
 }
@@ -274,8 +342,7 @@ function renderSectionMeta() {
   meta.innerHTML = "";
   const soundLabel = document.createElement("label"); soundLabel.className = "muted"; soundLabel.textContent = "الصوت الافتراضي للقسم:";
   const soundSel = document.createElement("select");
-  Object.entries(SOUNDS).forEach(([k, v]) => soundSel.add(new Option(v, k)));
-  soundSel.value = s.defaultSoundKey || "bell1";
+  fillSoundSelect(soundSel, s.defaultSoundKey || "bell1");
   soundSel.onchange = () => { s.defaultSoundKey = soundSel.value; };
   const rename = document.createElement("button"); rename.className = "ghost"; rename.textContent = "تعديل اسم القسم"; rename.onclick = renameSection;
   const del = document.createElement("button"); del.className = "ghost danger"; del.textContent = "حذف القسم"; del.onclick = deleteSection;
@@ -342,7 +409,7 @@ function renderPrayer() {
   }
   const methodOpts = Object.entries(ADHAN_METHODS).map(([k, v]) => `<option value="${k}" ${p.method === k ? "selected" : ""}>${v}</option>`).join("");
   const cityOpts = Object.keys(CITIES).map(c => `<option value="${c}">${c || CITIES[c]}</option>`).join("");
-  const soundOpts = Object.entries(SOUNDS).map(([k, v]) => `<option value="${k}" ${p.adhanSoundKey === k ? "selected" : ""}>${v}</option>`).join("");
+  const soundOpts = soundOptionsHTML(p.adhanSoundKey);
   const prayerChecks = PRAYER_NAMES.map((n, i) => `<label style="white-space:nowrap"><input type="checkbox" ${(p.adhanMask & (1 << i)) ? "checked" : ""} onchange="togglePrayerBit(${i}, this.checked)"> ${n}</label>`).join(" ");
   box.innerHTML = head + `
     <div class="row subtle" style="gap:14px;margin-bottom:10px">
@@ -608,12 +675,88 @@ function importConfig(file) {
 // ─── UI helpers ─────────────────────────────────────────────────────────────
 function showTab(name) {
   document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
-  ["schedules", "reports", "logs", "announce", "devices"].forEach(t =>
+  ["schedules", "reports", "logs", "announce", "devices", "sounds", "account"].forEach(t =>
     document.getElementById("tab-" + t).style.display = t === name ? "block" : "none");
   if (name === "reports") loadReports();
   if (name === "logs") loadLogs();
   if (name === "devices") loadDevices();
   if (name === "announce") loadCommands();
+  if (name === "sounds") renderLibrary();
+  if (name === "account") loadAccount();
+}
+
+// ─── Sound library ──────────────────────────────────────────────────────────
+async function loadLibrary() {
+  const { data } = await db.from("sound_library")
+    .select("id, name, url, storage_path, school_id, duration_ms, sort_order")
+    .order("school_id", { nullsFirst: true }).order("sort_order");
+  library = data || [];
+}
+function renderLibrary() {
+  const box = document.getElementById("soundLibList");
+  const rows = [];
+  rows.push(`<div class="subtle" style="margin:10px 0 4px"><b>النغمات المدمجة</b></div>`);
+  rows.push(Object.entries(SOUNDS).map(([k, v]) => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><span style="flex:1">${v}</span><span class="muted mono">مدمج</span></div>`).join(""));
+  const demo = library.filter(l => !l.school_id), mine = library.filter(l => l.school_id);
+  const renderRow = l => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)">
+      <span style="flex:1">${esc(l.name)}</span>
+      <audio controls preload="none" src="${esc(l.url)}" style="height:34px"></audio>
+      ${l.school_id ? `<button class="ghost danger" onclick="deleteSound('${l.id}','${esc(l.storage_path)}')">✕</button>` : `<span class="muted mono">مشترك</span>`}
+    </div>`;
+  rows.push(`<div class="subtle" style="margin:14px 0 4px"><b>المكتبة المشتركة (تجريبية)</b></div>`);
+  rows.push(demo.length ? demo.map(renderRow).join("") : `<p class="muted">لا توجد.</p>`);
+  rows.push(`<div class="subtle" style="margin:14px 0 4px"><b>أصوات مدرستك</b></div>`);
+  rows.push(mine.length ? mine.map(renderRow).join("") : `<p class="muted">لم ترفع أصواتًا بعد.</p>`);
+  box.innerHTML = rows.join("");
+}
+async function uploadSound(file) {
+  if (!file) return;
+  const msg = document.getElementById("soundMsg");
+  if (file.size > 5 * 1024 * 1024) { msg.textContent = "الملف أكبر من 5MB."; return; }
+  msg.textContent = "جارٍ الرفع…";
+  const ext = (file.name.split(".").pop() || "mp3").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 4) || "mp3";
+  const path = `school/${schoolId}/${crypto.randomUUID()}.${ext}`;
+  const { error: upErr } = await db.storage.from("sounds").upload(path, file, { contentType: file.type || "audio/mpeg", upsert: false });
+  if (upErr) { msg.textContent = "فشل الرفع: " + upErr.message; return; }
+  const { data: pub } = db.storage.from("sounds").getPublicUrl(path);
+  const name = (file.name.replace(/\.[^.]+$/, "") || "صوت").slice(0, 60);
+  const { error: insErr } = await db.from("sound_library").insert({ school_id: schoolId, name, storage_path: path, url: pub.publicUrl, sort_order: 100 });
+  if (insErr) { msg.textContent = "فشل الحفظ: " + insErr.message; return; }
+  document.getElementById("soundFile").value = "";
+  await loadLibrary(); renderLibrary(); renderSchedules();
+  msg.textContent = "✓ أُضيف الصوت إلى المكتبة.";
+}
+async function deleteSound(id, path) {
+  if (!confirm("حذف هذا الصوت من المكتبة؟")) return;
+  await db.storage.from("sounds").remove([path]);
+  const { error } = await db.from("sound_library").delete().eq("id", id);
+  if (error) { document.getElementById("soundMsg").textContent = "فشل الحذف: " + error.message; return; }
+  await loadLibrary(); renderLibrary(); renderSchedules();
+}
+
+// ─── Account / profile ──────────────────────────────────────────────────────
+async function loadAccount() {
+  document.getElementById("accEmail").textContent = me?.email || "";
+  document.getElementById("accRole").textContent = myRole === "admin" ? "مدير المدرسة" : "مشاهد";
+  const { data } = await db.from("profiles").select("full_name, phone").eq("user_id", me.id).maybeSingle();
+  document.getElementById("accName").value = data?.full_name || "";
+  document.getElementById("accPhone").value = data?.phone || "";
+}
+async function saveProfile() {
+  const full_name = document.getElementById("accName").value.trim();
+  const phone = document.getElementById("accPhone").value.trim();
+  const { error } = await db.from("profiles").upsert({ user_id: me.id, full_name, phone, updated_at: new Date().toISOString() });
+  document.getElementById("accMsg").textContent = error ? "فشل: " + error.message : "✓ حُفظت بياناتك.";
+}
+async function changePassword() {
+  const p1 = document.getElementById("accPw1").value, p2 = document.getElementById("accPw2").value;
+  const msg = document.getElementById("accMsg");
+  if (p1.length < 6) { msg.textContent = "كلمة المرور 6 أحرف على الأقل."; return; }
+  if (p1 !== p2) { msg.textContent = "كلمتا المرور غير متطابقتين."; return; }
+  const { error } = await db.auth.updateUser({ password: p1 });
+  if (error) { msg.textContent = "فشل: " + error.message; return; }
+  document.getElementById("accPw1").value = ""; document.getElementById("accPw2").value = "";
+  msg.textContent = "✓ تم تحديث كلمة المرور.";
 }
 function show(id, text, isError) {
   const el = document.getElementById(id);
@@ -655,10 +798,15 @@ function daysBoxes(e) {
 }
 function soundSelect(e) {
   const s = document.createElement("select");
-  const defName = SOUNDS[sec()?.defaultSoundKey] || "الافتراضي";
+  const defName = soundName(sec()?.defaultSoundKey);
   s.add(new Option("افتراضي القسم (" + defName + ")", ""));
   Object.entries(SOUNDS).forEach(([k, v]) => s.add(new Option(v, k)));
-  if (e.soundKey && !(e.soundKey in SOUNDS)) s.add(new Option(e.soundKey, e.soundKey));
+  if (library.length) {
+    const og = document.createElement("optgroup"); og.label = "مكتبة الأصوات";
+    library.forEach(l => og.appendChild(new Option(l.name, libKey(l))));
+    s.appendChild(og);
+  }
+  if (e.soundKey && !SOUNDS[e.soundKey] && !library.some(l => libKey(l) === e.soundKey)) s.add(new Option(soundName(e.soundKey), e.soundKey));
   s.value = e.soundKey || "";
   s.onchange = () => e.soundKey = s.value;
   return s;

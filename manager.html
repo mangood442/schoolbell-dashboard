@@ -98,6 +98,7 @@
     <button data-tab="announce" onclick="showTab('announce')">النداء</button>
     <button data-tab="schedules" onclick="showTab('schedules')">الجداول</button>
     <button data-tab="log" onclick="showTab('log')">السجل</button>
+    <button data-tab="account" onclick="showTab('account')">حسابي</button>
   </div>
 </div>
 
@@ -109,6 +110,7 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const DAY_MS = 86400000;
 let schoolId = null, config = { v: 2, sections: [] }, configVersion = 0, tab = "home";
+let me = null, myRole = "admin";
 let logs = [], commands = [], curSec = -1;   // -1 = whole school (all sections)
 
 function normalizeConfig(p) {
@@ -137,9 +139,10 @@ async function init() {
   // Scope to the signed-in user: super admins see all membership rows via RLS,
   // so an unscoped maybeSingle() errors on schools with more than one account.
   const { data: m } = await db.from("school_users")
-    .select("school_id").eq("user_id", session.user.id).maybeSingle();
+    .select("school_id, role").eq("user_id", session.user.id).maybeSingle();
   if (!m) return show("loginMsg", "الحساب غير مرتبط بمدرسة.", true);
   schoolId = m.school_id;
+  me = session.user; myRole = m.role || "admin";
   document.getElementById("login").hidden = true;
   document.getElementById("app").hidden = false;
   await refresh();
@@ -201,6 +204,45 @@ function showTab(name) {
   else if (name === "announce") { c.innerHTML = renderAnnounce(); }
   else if (name === "schedules") c.innerHTML = renderSchedules();
   else if (name === "log") c.innerHTML = renderLog();
+  else if (name === "account") { c.innerHTML = renderAccount(); loadAccount(); }
+}
+
+function renderAccount() {
+  return `<div class="card" style="display:flex;flex-direction:column;gap:14px;max-width:520px">
+    <h2 style="margin:0">حسابي</h2>
+    <div class="row"><label class="muted" style="width:120px">البريد</label><span id="accEmail"></span></div>
+    <div class="row"><label class="muted" style="width:120px">الدور</label><span id="accRole"></span></div>
+    <label class="muted">الاسم الكامل</label><input id="accName" placeholder="اسمك الكامل">
+    <label class="muted">رقم الجوال</label><input id="accPhone" dir="ltr" placeholder="05xxxxxxxx">
+    <button class="btn-primary" onclick="saveProfile()">حفظ البيانات</button>
+    <hr style="border:none;border-top:1px solid var(--line);margin:4px 0">
+    <h2 style="margin:0;font-size:16px">تغيير كلمة المرور</h2>
+    <input id="accPw1" type="password" dir="ltr" placeholder="كلمة مرور جديدة (6 أحرف على الأقل)">
+    <input id="accPw2" type="password" dir="ltr" placeholder="تأكيد كلمة المرور">
+    <button class="btn-primary" onclick="changePassword()">تحديث كلمة المرور</button>
+    <p class="muted" id="accMsg"></p>
+  </div>`;
+}
+async function loadAccount() {
+  document.getElementById("accEmail").textContent = me?.email || "";
+  document.getElementById("accRole").textContent = myRole === "admin" ? "مدير المدرسة" : "مشاهد";
+  const { data } = await db.from("profiles").select("full_name, phone").eq("user_id", me.id).maybeSingle();
+  if (data) { document.getElementById("accName").value = data.full_name || ""; document.getElementById("accPhone").value = data.phone || ""; }
+}
+async function saveProfile() {
+  const full_name = document.getElementById("accName").value.trim();
+  const phone = document.getElementById("accPhone").value.trim();
+  const { error } = await db.from("profiles").upsert({ user_id: me.id, full_name, phone, updated_at: new Date().toISOString() });
+  document.getElementById("accMsg").textContent = error ? "فشل: " + error.message : "✓ حُفظت بياناتك.";
+}
+async function changePassword() {
+  const p1 = document.getElementById("accPw1").value, p2 = document.getElementById("accPw2").value;
+  const msg = document.getElementById("accMsg");
+  if (p1.length < 6) { msg.textContent = "كلمة المرور 6 أحرف على الأقل."; return; }
+  if (p1 !== p2) { msg.textContent = "كلمتا المرور غير متطابقتين."; return; }
+  const { error } = await db.auth.updateUser({ password: p1 });
+  msg.textContent = error ? "فشل: " + error.message : "✓ تم تحديث كلمة المرور.";
+  if (!error) { document.getElementById("accPw1").value = ""; document.getElementById("accPw2").value = ""; }
 }
 
 function renderHome() {
