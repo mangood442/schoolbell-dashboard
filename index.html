@@ -710,11 +710,13 @@ function showTab(name) {
 
 // ─── Smart devices (Tuya) ───────────────────────────────────────────────────
 let tuyaDevices = [];
-const TUYA_CATS = { light: "إنارة", curtain: "ستارة", switch: "مفتاح/مقبس" };
+const TUYA_CATS = { light: "إنارة", curtain: "ستارة", switch: "مفتاح/مقبس", sensor: "حسّاس", lock: "قفل", thermostat: "منظّم حرارة", panel: "لوحة تحكم", other: "جهاز آخر" };
+const TUYA_BASIC = ["light", "curtain", "switch"];
 const TUYA_DP_TEMPLATES = {
   light: '{"switch":"20","bright":"22","temp":"23"}',
   curtain: '{"control":"1","percent":"2","position":"3"}',
-  switch: '{"switch":"1"}'
+  switch: '{"switch":"1"}',
+  sensor: '{}', lock: '{}', thermostat: '{}', panel: '{}', other: '{}'
 };
 async function loadTuyaList() {
   const { data } = await db.from("tuya_devices")
@@ -730,6 +732,71 @@ async function tuyaResync(id) {
   if (error) msg.textContent = "فشل التحديث: " + (error.message || "");
   else if (data && data.error) msg.textContent = "التحديث: " + data.error;
   else { msg.textContent = "✓ حُدّث المفتاح من سحابة تويا"; await loadTuyaList(); }
+}
+
+// Generic device panel: works for ANY Tuya device — discovers its functions,
+// renders a control for each (toggle/number/enum/text) and shows live status.
+async function openDevicePanel(id) {
+  const dev = tuyaDevices.find(x => x.id === id); if (!dev) return;
+  const back = document.createElement("div");
+  back.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000";
+  const card = document.createElement("div");
+  card.style.cssText = "background:var(--card,#fff);color:var(--ink,#111);border-radius:14px;padding:18px;max-width:640px;width:92%;max-height:85vh;overflow:auto";
+  back.appendChild(card); document.body.appendChild(back);
+  back.onclick = e => { if (e.target === back) document.body.removeChild(back); };
+  card.innerHTML = `<h2 style="margin:0 0 4px">${esc(dev.name)} <span class="muted" style="font-size:14px">· ${TUYA_CATS[dev.category] || dev.category}</span></h2>
+    <p class="muted" id="dpMsg">جارٍ جلب القدرات والحالة من سحابة تويا…</p>`;
+  const [fnsR, stR] = await Promise.all([
+    db.functions.invoke("tuya", { body: { deviceId: id, action: "functions" } }),
+    db.functions.invoke("tuya", { body: { deviceId: id, action: "status" } })
+  ]);
+  const fns = (fnsR.data && fnsR.data.functions) || [];
+  const st = (stR.data && stR.data.status) || [];
+  const stMap = {}; st.forEach(s => stMap[s.code] = s.value);
+  const msg = document.getElementById("dpMsg");
+  const err = (fnsR.data && fnsR.data.error) || (stR.data && stR.data.error);
+  msg.textContent = err ? ("تعذّر: " + err) : (fns.length ? "" : "لا توجد وظائف قابلة للتحكم لهذا الجهاز.");
+  const ctl = document.createElement("div");
+  ctl.innerHTML = '<div class="subtle" style="margin:8px 0 4px"><b>التحكم</b></div>';
+  fns.forEach(f => {
+    const row = document.createElement("div"); row.className = "row";
+    row.style.cssText = "padding:6px 0;border-bottom:1px solid var(--line);gap:8px;align-items:center;flex-wrap:wrap";
+    const label = document.createElement("span"); label.style.cssText = "flex:1;min-width:150px"; label.textContent = f.code; label.title = f.type;
+    row.appendChild(label);
+    let p = {}; try { p = JSON.parse(f.values || "{}"); } catch (_) {}
+    if (f.type === "Boolean") {
+      const on = document.createElement("button"); on.className = "primary"; on.textContent = "تشغيل"; on.onclick = () => rawCmd(id, f.code, true, msg);
+      const off = document.createElement("button"); off.className = "ghost"; off.textContent = "إطفاء"; off.onclick = () => rawCmd(id, f.code, false, msg);
+      row.append(on, off);
+    } else if (f.type === "Integer") {
+      const inp = document.createElement("input"); inp.type = "number"; inp.style.width = "90px";
+      if (p.min != null) inp.min = p.min; if (p.max != null) inp.max = p.max; inp.value = stMap[f.code] ?? p.min ?? 0;
+      const b = document.createElement("button"); b.className = "ghost"; b.textContent = "ضبط"; b.onclick = () => rawCmd(id, f.code, +inp.value, msg);
+      row.append(inp, b);
+    } else if (f.type === "Enum") {
+      const sel = document.createElement("select"); (p.range || []).forEach(v => sel.add(new Option(v, v))); if (stMap[f.code]) sel.value = stMap[f.code];
+      const b = document.createElement("button"); b.className = "ghost"; b.textContent = "ضبط"; b.onclick = () => rawCmd(id, f.code, sel.value, msg);
+      row.append(sel, b);
+    } else if (f.type === "String") {
+      const inp = document.createElement("input"); inp.style.flex = "1"; inp.value = stMap[f.code] ?? "";
+      const b = document.createElement("button"); b.className = "ghost"; b.textContent = "ضبط"; b.onclick = () => rawCmd(id, f.code, inp.value, msg);
+      row.append(inp, b);
+    } else { const s = document.createElement("span"); s.className = "muted"; s.textContent = f.type; row.append(s); }
+    ctl.appendChild(row);
+  });
+  const stw = document.createElement("div");
+  stw.innerHTML = '<div class="subtle" style="margin:14px 0 4px"><b>الحالة والقراءات</b></div>';
+  if (st.length) st.forEach(s => { const r = document.createElement("div"); r.className = "row"; r.style.cssText = "padding:4px 0;border-bottom:1px solid var(--line)"; r.innerHTML = `<span style="flex:1" class="muted">${esc(s.code)}</span><span class="mono">${esc(String(s.value))}</span>`; stw.appendChild(r); });
+  else stw.innerHTML += '<p class="muted">لا توجد قراءات.</p>';
+  const footer = document.createElement("div"); footer.className = "row"; footer.style.marginTop = "14px";
+  const close = document.createElement("button"); close.className = "ghost"; close.textContent = "إغلاق"; close.onclick = () => document.body.removeChild(back);
+  footer.append(close);
+  if (fns.length) card.appendChild(ctl);
+  card.appendChild(stw); card.appendChild(footer);
+}
+async function rawCmd(id, code, value, msgEl) {
+  const { data, error } = await db.functions.invoke("tuya", { body: { deviceId: id, action: "raw", commands: [{ code, value }] } });
+  if (msgEl) msgEl.textContent = error ? ("فشل: " + error.message) : ((data && data.error) ? data.error : ((data && data.ok) ? ("✓ " + code) : "لم يُقبل الأمر"));
 }
 
 // ─── Scenes: one tap runs several devices (stored in the config payload) ──────
@@ -830,13 +897,14 @@ function renderTuya() {
       controls = `<button class="ghost" onclick="tuyaCtl('${d.id}','open')">▲ فتح</button>
         <button class="ghost" onclick="tuyaCtl('${d.id}','stop')">■ إيقاف</button>
         <button class="ghost" onclick="tuyaCtl('${d.id}','close')">▼ إغلاق</button>`;
-    } else {
+    } else if (d.category === "light" || d.category === "switch") {
       controls = `<button class="primary" onclick="tuyaCtl('${d.id}','on')">تشغيل</button>
         <button class="ghost" onclick="tuyaCtl('${d.id}','off')">إطفاء</button>`;
     }
     return `<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap">
       <span style="min-width:150px;flex:1"><b>${esc(d.name)}</b> <span class="muted">· ${TUYA_CATS[d.category] || d.category}</span></span>
       ${controls}
+      <button class="ghost" onclick="openDevicePanel('${d.id}')" title="تحكم متقدّم وقراءة الحالة (كل الوظائف)">⚙ لوحة</button>
       <button class="ghost" onclick="tuyaCtl('${d.id}','test')" title="فحص الاتصال">فحص</button>
       <button class="ghost" onclick="tuyaResync('${d.id}')" title="تحديث المفتاح من سحابة تويا">🔄</button>
       <button class="ghost" onclick="showTuyaForm('${d.id}')">تعديل</button>
