@@ -122,7 +122,7 @@
       <div id="schedMeta" class="row" style="margin-bottom:10px"></div>
       <table id="eventsTable">
         <thead><tr>
-          <th>الوقت</th><th>الاسم</th><th>المدة (د)</th><th>الأيام</th><th>النغمة</th><th>الصوت %</th><th>مفعّل</th><th></th>
+          <th>الوقت</th><th>الاسم</th><th>المدة (د)</th><th>الأيام</th><th>النغمة</th><th>الصوت %</th><th>مفعّل</th><th>أجهزة</th><th></th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -304,6 +304,7 @@ async function init() {
   document.getElementById("app").style.display = "block";
   document.getElementById("logoutBtn").style.display = "inline-block";
   await loadLibrary();
+  await loadTuyaList();
   await loadConfig();
   loadLogs(); loadDevices(); loadCommands();
 }
@@ -477,6 +478,7 @@ function renderEvents() {
       td(soundSelect(e)),
       td(numInp(Math.round((e.volume ?? 1) * 100), v => e.volume = Math.min(100, Math.max(0, +v || 0)) / 100, 60)),
       td(checkbox("", e.enabled !== false, v => e.enabled = v)),
+      td(deviceActionsBtn(e)),
       td(delBtn(() => { s.events.splice(i, 1); renderEvents(); })),
     );
     body.appendChild(tr);
@@ -706,12 +708,16 @@ const TUYA_DP_TEMPLATES = {
   curtain: '{"control":"1","percent":"2","position":"3"}',
   switch: '{"switch":"1"}'
 };
-async function loadTuya() {
+async function loadTuyaList() {
   const { data } = await db.from("tuya_devices")
     .select("id,name,category,tuya_device_id,ip,protocol_version,dp_map,section_id,online,last_seen_at")
     .order("sort_order");
   tuyaDevices = data || [];
-  renderTuya();
+}
+async function loadTuya() { await loadTuyaList(); renderTuya(); }
+const TUYA_ACTION_LABELS = { on: "تشغيل", off: "إطفاء", open: "فتح", close: "إغلاق", stop: "إيقاف", set: "ضبط" };
+function tuyaActionsFor(cat) {
+  return cat === "curtain" ? ["open", "close", "stop", "set"] : (cat === "light" ? ["on", "off", "set"] : ["on", "off"]);
 }
 function renderTuya() {
   const box = document.getElementById("tuyaList");
@@ -926,6 +932,64 @@ function soundSelect(e) {
   s.value = e.soundKey || "";
   s.onchange = () => e.soundKey = s.value;
   return s;
+}
+// Per-event Tuya device actions (survive cloud sync via the payload).
+function deviceActionsBtn(e) {
+  const b = document.createElement("button"); b.className = "ghost";
+  const n = (e.deviceActions || []).length;
+  b.textContent = "⚡" + (n ? " " + n : "");
+  b.title = "إجراءات الأجهزة الذكية عند هذا الحدث";
+  b.onclick = () => editDeviceActions(e);
+  return b;
+}
+function editDeviceActions(e) {
+  e.deviceActions = e.deviceActions || [];
+  const back = document.createElement("div");
+  back.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000";
+  const card = document.createElement("div");
+  card.style.cssText = "background:var(--card,#fff);color:var(--ink,#111);border-radius:14px;padding:18px;max-width:600px;width:92%;max-height:82vh;overflow:auto";
+  const close = () => { document.body.removeChild(back); renderEvents(); };
+  const draw = () => {
+    card.innerHTML = `<h2 style="margin:0 0 4px">إجراءات الأجهزة عند «${esc(e.name)}»</h2>
+      <p class="muted" style="margin:0 0 12px">تُنفَّذ على التابلت وقت الحدث (مثل تشغيل الإنارة أو فتح الستائر).</p>`;
+    if (!tuyaDevices.length) {
+      card.innerHTML += '<p class="muted">لا توجد أجهزة ذكية. أضِفها أولًا من تبويب «الأجهزة الذكية».</p>';
+    }
+    e.deviceActions.forEach((a, idx) => {
+      const row = document.createElement("div"); row.className = "row";
+      row.style.cssText = "padding:8px 0;border-bottom:1px solid var(--line);gap:8px;flex-wrap:wrap;align-items:center";
+      const dsel = document.createElement("select");
+      tuyaDevices.forEach(d => dsel.add(new Option(d.name + " · " + (TUYA_CATS[d.category] || d.category), d.id)));
+      dsel.value = a.tuyaDeviceId || (tuyaDevices[0] && tuyaDevices[0].id) || "";
+      dsel.onchange = () => { a.tuyaDeviceId = dsel.value; a.action = tuyaActionsFor(catOf(a.tuyaDeviceId))[0]; draw(); };
+      const asel = document.createElement("select");
+      tuyaActionsFor(catOf(a.tuyaDeviceId)).forEach(x => asel.add(new Option(TUYA_ACTION_LABELS[x], x)));
+      asel.value = a.action || tuyaActionsFor(catOf(a.tuyaDeviceId))[0];
+      asel.onchange = () => { a.action = asel.value; draw(); };
+      row.append(dsel, asel);
+      if (a.action === "set") {
+        const v = document.createElement("input"); v.type = "number"; v.min = 0; v.max = 100; v.style.width = "72px";
+        v.value = a.value ?? 100; v.title = catOf(a.tuyaDeviceId) === "curtain" ? "الموضع %" : "السطوع %";
+        v.onchange = () => a.value = Math.max(0, Math.min(100, +v.value || 0));
+        row.append(v);
+      }
+      const del = document.createElement("button"); del.className = "ghost danger"; del.textContent = "✕";
+      del.onclick = () => { e.deviceActions.splice(idx, 1); draw(); };
+      row.append(del);
+      card.appendChild(row);
+    });
+    const footer = document.createElement("div"); footer.className = "row"; footer.style.marginTop = "14px";
+    const add = document.createElement("button"); add.className = "ghost"; add.textContent = "+ إجراء"; add.disabled = !tuyaDevices.length;
+    add.onclick = () => { const d = tuyaDevices[0]; e.deviceActions.push({ tuyaDeviceId: d.id, action: tuyaActionsFor(d.category)[0] }); draw(); };
+    const done = document.createElement("button"); done.className = "primary"; done.textContent = "تم"; done.onclick = close;
+    footer.append(done, add);
+    card.appendChild(footer);
+  };
+  const catOf = id => (tuyaDevices.find(d => d.id === id) || {}).category;
+  draw();
+  back.onclick = ev => { if (ev.target === back) close(); };
+  back.appendChild(card);
+  document.body.appendChild(back);
 }
 function checkbox(label, checked, onChange) {
   const wrap = document.createElement("label");
