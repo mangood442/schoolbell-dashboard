@@ -200,6 +200,13 @@
       <div id="tuyaForm" style="display:none"></div>
       <div id="tuyaList"></div>
       <p class="muted" id="tuyaMsg"></p>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:18px 0">
+      <div class="row" style="margin-bottom:6px"><h2 style="flex:1">المشاهد</h2>
+        <button class="ghost" onclick="showSceneForm()">+ مشهد</button></div>
+      <p class="muted" style="margin-top:-4px">شغّل عدة أجهزة بضغطة واحدة (مثل «وضع الاختبارات»: إضاءة كاملة + فتح الستائر).</p>
+      <div id="sceneForm" style="display:none"></div>
+      <div id="sceneList"></div>
     </section>
 
     <!-- Account -->
@@ -317,9 +324,10 @@ function normalizeConfig(p) {
     id: s.id ?? null, name: s.name || "قسم", defaultSoundKey: s.defaultSoundKey || "bell1",
     prayer: s.prayer || null, schedules: Array.isArray(s.schedules) ? s.schedules : [],
   });
-  if (p && Array.isArray(p.sections)) return { v: 2, sections: p.sections.map(normSec) };
+  const scenes = p && Array.isArray(p.scenes) ? p.scenes : [];   // preserve smart-device scenes
+  if (p && Array.isArray(p.sections)) return { v: 2, sections: p.sections.map(normSec), scenes };
   const scheds = p && Array.isArray(p.schedules) ? p.schedules : [];   // legacy
-  return { v: 2, sections: [normSec({ name: "عام", schedules: scheds })] };
+  return { v: 2, sections: [normSec({ name: "عام", schedules: scheds })], scenes };
 }
 
 async function loadConfig() {
@@ -714,7 +722,98 @@ async function loadTuyaList() {
     .order("sort_order");
   tuyaDevices = data || [];
 }
-async function loadTuya() { await loadTuyaList(); window._tabletUp = await tabletOnline(); renderTuya(); }
+async function loadTuya() { await loadTuyaList(); window._tabletUp = await tabletOnline(); renderTuya(); renderScenes(); }
+async function tuyaResync(id) {
+  const msg = document.getElementById("tuyaMsg");
+  msg.textContent = "جارٍ تحديث المفتاح…";
+  const { data, error } = await db.functions.invoke("tuya", { body: { deviceId: id, action: "resync" } });
+  if (error) msg.textContent = "فشل التحديث: " + (error.message || "");
+  else if (data && data.error) msg.textContent = "التحديث: " + data.error;
+  else { msg.textContent = "✓ حُدّث المفتاح من سحابة تويا"; await loadTuyaList(); }
+}
+
+// ─── Scenes: one tap runs several devices (stored in the config payload) ──────
+function scenes() { return (config.scenes = config.scenes || []); }
+function renderScenes() {
+  const box = document.getElementById("sceneList");
+  if (!scenes().length) { box.innerHTML = '<p class="muted">لا توجد مشاهد بعد.</p>'; return; }
+  box.innerHTML = scenes().map(sc => `<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap">
+      <span style="flex:1"><b>${esc(sc.name)}</b> <span class="muted">· ${(sc.actions || []).length} إجراء</span></span>
+      <button class="primary" onclick="runScene('${sc.id}')">▶ تشغيل</button>
+      <button class="ghost" onclick="showSceneForm('${sc.id}')">تعديل</button>
+      <button class="ghost danger" onclick="deleteScene('${sc.id}')">✕</button>
+    </div>`).join("");
+}
+async function runScene(id) {
+  const sc = scenes().find(x => x.id === id); if (!sc) return;
+  const msg = document.getElementById("tuyaMsg");
+  const online = await tabletOnline();
+  let ok = 0, fail = 0;
+  for (const a of (sc.actions || [])) {
+    const dev = tuyaDevices.find(x => x.id === a.tuyaDeviceId);
+    if (online) {
+      const { error } = await db.from("commands").insert({ school_id: schoolId, type: "device",
+        payload: { tuyaDeviceId: a.tuyaDeviceId, action: a.action, value: a.value ?? null }, section_id: dev?.section_id ?? null });
+      error ? fail++ : ok++;
+    } else {
+      const { data, error } = await db.functions.invoke("tuya", { body: { deviceId: a.tuyaDeviceId, action: a.action, value: a.value ?? null } });
+      (error || (data && data.error)) ? fail++ : ok++;
+    }
+  }
+  if (online) wakeTablets(schoolId);
+  msg.textContent = `✓ «${sc.name}»: ${ok} إجراء` + (fail ? ` · ${fail} فشل` : "") + (online ? " (عبر التابلت)" : " (سحابي)");
+}
+function showSceneForm(id) {
+  const sc = id ? scenes().find(x => x.id === id) : { id: "sc-" + Date.now(), name: "", actions: [] };
+  sc.actions = sc.actions || [];
+  const f = document.getElementById("sceneForm"); f.style.display = "block";
+  const catOf = did => (tuyaDevices.find(d => d.id === did) || {}).category;
+  const draw = () => {
+    f.innerHTML = "";
+    const card = document.createElement("div");
+    card.style.cssText = "border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;max-width:600px";
+    const nameRow = document.createElement("div"); nameRow.className = "row"; nameRow.style.marginBottom = "8px";
+    const nl = document.createElement("label"); nl.className = "muted"; nl.style.width = "80px"; nl.textContent = "الاسم";
+    const ni = document.createElement("input"); ni.style.flex = "1"; ni.value = sc.name; ni.placeholder = "وضع الاختبارات"; ni.oninput = () => sc.name = ni.value;
+    nameRow.append(nl, ni); card.appendChild(nameRow);
+    sc.actions.forEach((a, idx) => {
+      const row = document.createElement("div"); row.className = "row"; row.style.cssText = "padding:6px 0;gap:8px;flex-wrap:wrap;align-items:center";
+      const dsel = document.createElement("select");
+      tuyaDevices.forEach(d => dsel.add(new Option(d.name + " · " + (TUYA_CATS[d.category] || d.category), d.id)));
+      dsel.value = a.tuyaDeviceId || (tuyaDevices[0] && tuyaDevices[0].id) || "";
+      dsel.onchange = () => { a.tuyaDeviceId = dsel.value; a.action = tuyaActionsFor(catOf(a.tuyaDeviceId))[0]; draw(); };
+      const asel = document.createElement("select");
+      tuyaActionsFor(catOf(a.tuyaDeviceId)).forEach(x => asel.add(new Option(TUYA_ACTION_LABELS[x], x)));
+      asel.value = a.action || tuyaActionsFor(catOf(a.tuyaDeviceId))[0]; asel.onchange = () => { a.action = asel.value; draw(); };
+      row.append(dsel, asel);
+      if (a.action === "set") { const v = document.createElement("input"); v.type = "number"; v.min = 0; v.max = 100; v.style.width = "72px"; v.value = a.value ?? 100; v.onchange = () => a.value = Math.max(0, Math.min(100, +v.value || 0)); row.append(v); }
+      const del = document.createElement("button"); del.className = "ghost danger"; del.textContent = "✕"; del.onclick = () => { sc.actions.splice(idx, 1); draw(); };
+      row.append(del); card.appendChild(row);
+    });
+    const footer = document.createElement("div"); footer.className = "row"; footer.style.marginTop = "12px";
+    const add = document.createElement("button"); add.className = "ghost"; add.textContent = "+ إجراء"; add.disabled = !tuyaDevices.length;
+    add.onclick = () => { const d = tuyaDevices[0]; sc.actions.push({ tuyaDeviceId: d.id, action: tuyaActionsFor(d.category)[0] }); draw(); };
+    const save = document.createElement("button"); save.className = "primary"; save.textContent = "💾 حفظ المشهد";
+    save.onclick = () => saveScene(sc, !!id);
+    const cancel = document.createElement("button"); cancel.className = "ghost"; cancel.textContent = "إلغاء"; cancel.onclick = () => { f.style.display = "none"; };
+    footer.append(save, add, cancel); card.appendChild(footer);
+    f.appendChild(card);
+  };
+  draw();
+}
+async function saveScene(sc, existing) {
+  if (!sc.name.trim()) { document.getElementById("tuyaMsg").textContent = "أدخل اسم المشهد"; return; }
+  if (!existing) scenes().push(sc);
+  await saveConfig(true);
+  document.getElementById("sceneForm").style.display = "none";
+  renderScenes();
+  document.getElementById("tuyaMsg").textContent = "✓ حُفظ المشهد";
+}
+async function deleteScene(id) {
+  if (!confirm("حذف هذا المشهد؟")) return;
+  config.scenes = scenes().filter(x => x.id !== id);
+  await saveConfig(true); renderScenes();
+}
 const TUYA_ACTION_LABELS = { on: "تشغيل", off: "إطفاء", open: "فتح", close: "إغلاق", stop: "إيقاف", set: "ضبط" };
 function tuyaActionsFor(cat) {
   return cat === "curtain" ? ["open", "close", "stop", "set"] : (cat === "light" ? ["on", "off", "set"] : ["on", "off"]);
@@ -739,6 +838,7 @@ function renderTuya() {
       <span style="min-width:150px;flex:1"><b>${esc(d.name)}</b> <span class="muted">· ${TUYA_CATS[d.category] || d.category}</span></span>
       ${controls}
       <button class="ghost" onclick="tuyaCtl('${d.id}','test')" title="فحص الاتصال">فحص</button>
+      <button class="ghost" onclick="tuyaResync('${d.id}')" title="تحديث المفتاح من سحابة تويا">🔄</button>
       <button class="ghost" onclick="showTuyaForm('${d.id}')">تعديل</button>
       <button class="ghost danger" onclick="deleteTuya('${d.id}')">✕</button>
     </div>`;
