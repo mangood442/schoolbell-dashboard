@@ -725,6 +725,7 @@ async function loadTuyaList() {
   tuyaDevices = data || [];
 }
 async function loadTuya() { await loadTuyaList(); window._tabletUp = await tabletOnline(); renderTuya(); renderScenes(); }
+function tuyaSectionName(sid) { if (!sid) return "عام (كل المدرسة)"; const s = config.sections.find(x => x.id === sid); return s ? s.name : "قسم"; }
 async function tuyaResync(id) {
   const msg = document.getElementById("tuyaMsg");
   msg.textContent = "جارٍ تحديث المفتاح…";
@@ -902,7 +903,7 @@ function renderTuya() {
         <button class="ghost" onclick="tuyaCtl('${d.id}','off')">إطفاء</button>`;
     }
     return `<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap">
-      <span style="min-width:150px;flex:1"><b>${esc(d.name)}</b> <span class="muted">· ${TUYA_CATS[d.category] || d.category}</span></span>
+      <span style="min-width:150px;flex:1"><b>${esc(d.name)}</b> <span class="muted">· ${TUYA_CATS[d.category] || d.category} · ${esc(tuyaSectionName(d.section_id))}</span></span>
       ${controls}
       <button class="ghost" onclick="openDevicePanel('${d.id}')" title="تحكم متقدّم وقراءة الحالة (كل الوظائف)">⚙ لوحة</button>
       <button class="ghost" onclick="tuyaCtl('${d.id}','test')" title="فحص الاتصال">فحص</button>
