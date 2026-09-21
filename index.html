@@ -194,6 +194,7 @@
     <!-- Smart devices (Tuya) -->
     <section id="tab-smart" class="card" style="display:none">
       <div class="row" style="margin-bottom:6px"><h2 style="flex:1">الأجهزة الذكية (تويا)</h2>
+        <label class="muted">تصفية بالقسم</label><select id="tuyaFilter" onchange="renderTuya()" style="min-width:150px"></select>
         <button class="ghost" onclick="showTuyaForm()">+ إضافة جهاز</button>
       </div>
       <p class="muted" style="margin-top:-4px">تحكّم بالإنارة والستائر عبر التابلت على شبكة المدرسة. أدخل معرّف الجهاز والمفتاح المحلي مرة واحدة (من مشروع Tuya IoT). التحكم فوري عبر التابلت.</p>
@@ -724,8 +725,21 @@ async function loadTuyaList() {
     .order("sort_order");
   tuyaDevices = data || [];
 }
-async function loadTuya() { await loadTuyaList(); window._tabletUp = await tabletOnline(); renderTuya(); renderScenes(); }
+async function loadTuya() { await loadTuyaList(); window._tabletUp = await tabletOnline(); fillTuyaFilter(); renderTuya(); renderScenes(); }
 function tuyaSectionName(sid) { if (!sid) return "عام (كل المدرسة)"; const s = config.sections.find(x => x.id === sid); return s ? s.name : "قسم"; }
+function fillTuyaFilter() {
+  const sel = document.getElementById("tuyaFilter"); if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">كل الأقسام</option><option value="__none">عام (كل المدرسة)</option>'
+    + config.sections.filter(s => s.id).map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
+  sel.value = cur || "";
+}
+function tuyaFiltered() {
+  const f = (document.getElementById("tuyaFilter") || {}).value || "";
+  if (!f) return tuyaDevices;
+  if (f === "__none") return tuyaDevices.filter(d => !d.section_id);
+  return tuyaDevices.filter(d => d.section_id === f);
+}
 async function tuyaResync(id) {
   const msg = document.getElementById("tuyaMsg");
   msg.textContent = "جارٍ تحديث المفتاح…";
@@ -891,8 +905,9 @@ function renderTuya() {
   const status = window._tabletUp
     ? '<div class="subtle" style="margin-bottom:10px">🟢 التابلت متصل — التحكم فوري عبر الشبكة المحلية</div>'
     : '<div class="subtle" style="margin-bottom:10px">⚪ التابلت غير متصل — سيُستخدم التحكم السحابي (يتطلب إعداد اعتماد تويا)</div>';
-  if (!tuyaDevices.length) { box.innerHTML = status + '<p class="muted">لا توجد أجهزة بعد. أضف جهازًا للبدء.</p>'; return; }
-  box.innerHTML = status + tuyaDevices.map(d => {
+  const list = tuyaFiltered();
+  if (!list.length) { box.innerHTML = status + '<p class="muted">' + (tuyaDevices.length ? "لا أجهزة في هذا القسم." : "لا توجد أجهزة بعد. أضف جهازًا للبدء.") + '</p>'; return; }
+  box.innerHTML = status + list.map(d => {
     let controls = "";
     if (d.category === "curtain") {
       controls = `<button class="ghost" onclick="tuyaCtl('${d.id}','open')">▲ فتح</button>

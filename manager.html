@@ -97,6 +97,7 @@
     <button data-tab="home" class="active" onclick="showTab('home')">الرئيسية</button>
     <button data-tab="announce" onclick="showTab('announce')">النداء</button>
     <button data-tab="schedules" onclick="showTab('schedules')">الجداول</button>
+    <button data-tab="devices" onclick="showTab('devices')">الأجهزة</button>
     <button data-tab="log" onclick="showTab('log')">السجل</button>
     <button data-tab="account" onclick="showTab('account')">حسابي</button>
   </div>
@@ -115,9 +116,10 @@ let logs = [], commands = [], curSec = -1;   // -1 = whole school (all sections)
 
 function normalizeConfig(p) {
   const normSec = s => ({ id: s.id ?? null, name: s.name || "قسم", defaultSoundKey: s.defaultSoundKey || "bell1", schedules: Array.isArray(s.schedules) ? s.schedules : [] });
-  if (p && Array.isArray(p.sections)) return { v: 2, sections: p.sections.map(normSec) };
+  const scenes = p && Array.isArray(p.scenes) ? p.scenes : [];
+  if (p && Array.isArray(p.sections)) return { v: 2, sections: p.sections.map(normSec), scenes };
   const scheds = p && Array.isArray(p.schedules) ? p.schedules : [];
-  return { v: 2, sections: [normSec({ name: "عام", schedules: scheds })] };
+  return { v: 2, sections: [normSec({ name: "عام", schedules: scheds })], scenes };
 }
 function secObj() { return curSec >= 0 ? config.sections[curSec] : null; }
 function multiSection() { return config.sections.length > 1; }
@@ -204,7 +206,71 @@ function showTab(name) {
   else if (name === "announce") { c.innerHTML = renderAnnounce(); }
   else if (name === "schedules") c.innerHTML = renderSchedules();
   else if (name === "log") c.innerHTML = renderLog();
+  else if (name === "devices") { c.innerHTML = renderTuyaDevices(); loadTuyaDevices(); }
   else if (name === "account") { c.innerHTML = renderAccount(); loadAccount(); }
+}
+
+// ─── Smart devices (Tuya) — control from the manager's phone ─────────────────
+let tuyaDevices = [];
+const TUYA_CATS = { light: "إنارة", curtain: "ستارة", switch: "مفتاح/مقبس", sensor: "حسّاس", lock: "قفل", thermostat: "منظّم حرارة", panel: "لوحة تحكم", other: "جهاز آخر" };
+async function loadTuyaDevices() {
+  const { data } = await db.from("tuya_devices").select("id,name,category,section_id,online").order("sort_order");
+  tuyaDevices = data || [];
+  const el = document.getElementById("tuyaBox"); if (el) el.innerHTML = tuyaDevicesHtml();
+}
+function tuyaSectionName(sid) { if (!sid) return "عام"; const s = config.sections.find(x => x.id === sid); return s ? s.name : "قسم"; }
+function tuyaVisible() {
+  // Respect the section chip selection: -1 = whole school shows all.
+  if (curSec < 0) return tuyaDevices;
+  const sid = config.sections[curSec] && config.sections[curSec].id;
+  return tuyaDevices.filter(d => d.section_id === sid || !d.section_id);
+}
+function renderTuyaDevices() {
+  return `<div class="card">${curSec >= 0 || multiSection() ? sectionChips() : ""}
+    <h2 style="margin:6px 0">الأجهزة الذكية</h2>
+    <p class="muted" style="margin:0 0 8px">تحكّم بالإنارة والستائر وأجهزة القسم. تُنفَّذ فورًا على تابلت القسم.</p>
+    <div id="tuyaBox">جارٍ التحميل…</div>
+    <p class="muted" id="tuyaMsg"></p></div>
+    ${(config.scenes || []).length ? `<div class="card"><h2 style="margin:0 0 8px">المشاهد</h2><div id="sceneBox">${scenesHtml()}</div></div>` : ""}`;
+}
+function tuyaDevicesHtml() {
+  const list = tuyaVisible();
+  if (!list.length) return '<p class="muted">لا توجد أجهزة' + (tuyaDevices.length ? " في هذا القسم." : " بعد.") + '</p>';
+  return list.map(d => {
+    let ctl = "";
+    if (d.category === "curtain") ctl = `<button class="btn-tonal" onclick="tuyaCtl('${d.id}','open')">فتح</button>
+      <button class="btn-tonal" onclick="tuyaCtl('${d.id}','stop')">إيقاف</button>
+      <button class="btn-tonal" onclick="tuyaCtl('${d.id}','close')">إغلاق</button>`;
+    else if (d.category === "light" || d.category === "switch") ctl = `<button class="btn-primary" onclick="tuyaCtl('${d.id}','on')">تشغيل</button>
+      <button class="btn-tonal" onclick="tuyaCtl('${d.id}','off')">إطفاء</button>`;
+    else ctl = `<span class="muted">— يُدار من لوحة المدرسة —</span>`;
+    return `<div class="row" style="padding:8px 0;border-bottom:1px solid var(--border);gap:8px;flex-wrap:wrap;align-items:center">
+      <span style="flex:1;min-width:130px"><b>${esc(d.name)}</b> <span class="muted">· ${tuyaSectionName(d.section_id)}</span></span>${ctl}</div>`;
+  }).join("");
+}
+function scenesHtml() {
+  return (config.scenes || []).map(sc => `<div class="row" style="padding:8px 0;border-bottom:1px solid var(--border);gap:8px;align-items:center">
+    <span style="flex:1"><b>${esc(sc.name)}</b> <span class="muted">· ${(sc.actions || []).length} إجراء</span></span>
+    <button class="btn-primary" onclick="runScene('${sc.id}')">تشغيل</button></div>`).join("");
+}
+async function tuyaCtl(id, action, value) {
+  const dev = tuyaDevices.find(x => x.id === id);
+  const { error } = await db.from("commands").insert({ school_id: schoolId, type: "device",
+    payload: { tuyaDeviceId: id, action, value: value ?? null }, section_id: dev?.section_id ?? null });
+  if (!error) wakeTablets(schoolId);
+  const m = document.getElementById("tuyaMsg"); if (m) m.textContent = error ? "فشل: " + error.message : "✓ أُرسل الأمر إلى التابلت";
+}
+async function runScene(id) {
+  const sc = (config.scenes || []).find(x => x.id === id); if (!sc) return;
+  let ok = 0;
+  for (const a of (sc.actions || [])) {
+    const dev = tuyaDevices.find(x => x.id === a.tuyaDeviceId);
+    const { error } = await db.from("commands").insert({ school_id: schoolId, type: "device",
+      payload: { tuyaDeviceId: a.tuyaDeviceId, action: a.action, value: a.value ?? null }, section_id: dev?.section_id ?? null });
+    if (!error) ok++;
+  }
+  wakeTablets(schoolId);
+  const m = document.getElementById("tuyaMsg"); if (m) m.textContent = `✓ «${sc.name}»: ${ok} إجراء`;
 }
 
 function renderAccount() {
