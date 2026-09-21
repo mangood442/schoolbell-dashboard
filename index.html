@@ -99,6 +99,7 @@
       <button data-tab="announce" onclick="showTab('announce')">📢 النداء</button>
       <button data-tab="devices" onclick="showTab('devices')">📱 الأجهزة</button>
       <button data-tab="sounds" onclick="showTab('sounds')">🔊 الأصوات</button>
+      <button data-tab="smart" onclick="showTab('smart')">🔌 الأجهزة الذكية</button>
       <button data-tab="account" onclick="showTab('account')">👤 حسابي</button>
     </div>
     <div class="msg" id="msg"></div>
@@ -188,6 +189,17 @@
       <p class="muted" style="margin-top:-4px">استمع للأصوات، وارفع أصوات مدرستك (MP3/WAV، حتى 5MB). اختر أيًّا منها لأي حدث أو للأذان أو كصوت افتراضي للقسم.</p>
       <div id="soundLibList"></div>
       <p class="muted" id="soundMsg"></p>
+    </section>
+
+    <!-- Smart devices (Tuya) -->
+    <section id="tab-smart" class="card" style="display:none">
+      <div class="row" style="margin-bottom:6px"><h2 style="flex:1">الأجهزة الذكية (تويا)</h2>
+        <button class="ghost" onclick="showTuyaForm()">+ إضافة جهاز</button>
+      </div>
+      <p class="muted" style="margin-top:-4px">تحكّم بالإنارة والستائر عبر التابلت على شبكة المدرسة. أدخل معرّف الجهاز والمفتاح المحلي مرة واحدة (من مشروع Tuya IoT). التحكم فوري عبر التابلت.</p>
+      <div id="tuyaForm" style="display:none"></div>
+      <div id="tuyaList"></div>
+      <p class="muted" id="tuyaMsg"></p>
     </section>
 
     <!-- Account -->
@@ -675,14 +687,118 @@ function importConfig(file) {
 // ─── UI helpers ─────────────────────────────────────────────────────────────
 function showTab(name) {
   document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
-  ["schedules", "reports", "logs", "announce", "devices", "sounds", "account"].forEach(t =>
+  ["schedules", "reports", "logs", "announce", "devices", "sounds", "smart", "account"].forEach(t =>
     document.getElementById("tab-" + t).style.display = t === name ? "block" : "none");
   if (name === "reports") loadReports();
   if (name === "logs") loadLogs();
   if (name === "devices") loadDevices();
   if (name === "announce") loadCommands();
   if (name === "sounds") renderLibrary();
+  if (name === "smart") loadTuya();
   if (name === "account") loadAccount();
+}
+
+// ─── Smart devices (Tuya) ───────────────────────────────────────────────────
+let tuyaDevices = [];
+const TUYA_CATS = { light: "إنارة", curtain: "ستارة", switch: "مفتاح/مقبس" };
+const TUYA_DP_TEMPLATES = {
+  light: '{"switch":"20","bright":"22","temp":"23"}',
+  curtain: '{"control":"1","percent":"2","position":"3"}',
+  switch: '{"switch":"1"}'
+};
+async function loadTuya() {
+  const { data } = await db.from("tuya_devices")
+    .select("id,name,category,tuya_device_id,ip,protocol_version,dp_map,section_id,online,last_seen_at")
+    .order("sort_order");
+  tuyaDevices = data || [];
+  renderTuya();
+}
+function renderTuya() {
+  const box = document.getElementById("tuyaList");
+  if (!tuyaDevices.length) { box.innerHTML = '<p class="muted">لا توجد أجهزة بعد. أضف جهازًا للبدء.</p>'; return; }
+  box.innerHTML = tuyaDevices.map(d => {
+    let controls = "";
+    if (d.category === "curtain") {
+      controls = `<button class="ghost" onclick="tuyaCtl('${d.id}','open')">▲ فتح</button>
+        <button class="ghost" onclick="tuyaCtl('${d.id}','stop')">■ إيقاف</button>
+        <button class="ghost" onclick="tuyaCtl('${d.id}','close')">▼ إغلاق</button>`;
+    } else {
+      controls = `<button class="primary" onclick="tuyaCtl('${d.id}','on')">تشغيل</button>
+        <button class="ghost" onclick="tuyaCtl('${d.id}','off')">إطفاء</button>`;
+    }
+    return `<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap">
+      <span style="min-width:150px;flex:1"><b>${esc(d.name)}</b> <span class="muted">· ${TUYA_CATS[d.category] || d.category}</span></span>
+      ${controls}
+      <button class="ghost" onclick="tuyaCtl('${d.id}','test')" title="فحص الاتصال">فحص</button>
+      <button class="ghost" onclick="showTuyaForm('${d.id}')">تعديل</button>
+      <button class="ghost danger" onclick="deleteTuya('${d.id}')">✕</button>
+    </div>`;
+  }).join("");
+}
+async function tuyaCtl(id, action, value) {
+  const dev = tuyaDevices.find(x => x.id === id);
+  const { error } = await db.from("commands").insert({ school_id: schoolId, type: "device",
+    payload: { tuyaDeviceId: id, action, value: value ?? null }, section_id: dev?.section_id ?? null });
+  if (!error) wakeTablets(schoolId);
+  document.getElementById("tuyaMsg").textContent = error ? "فشل: " + error.message : "✓ أُرسل الأمر إلى التابلت";
+}
+function showTuyaForm(id) {
+  const d = id ? tuyaDevices.find(x => x.id === id) : null;
+  const secOpts = ['<option value="">عام (كل المدرسة)</option>']
+    .concat(config.sections.filter(s => s.id).map(s => `<option value="${s.id}" ${d && d.section_id === s.id ? "selected" : ""}>${esc(s.name)}</option>`)).join("");
+  const catOpts = Object.entries(TUYA_CATS).map(([k, v]) => `<option value="${k}" ${d && d.category === k ? "selected" : ""}>${v}</option>`).join("");
+  const f = document.getElementById("tuyaForm");
+  f.style.display = "block";
+  f.innerHTML = `<div style="display:flex;flex-direction:column;gap:10px;max-width:560px;border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px">
+    <div class="row"><label class="muted" style="width:120px">الاسم</label><input id="tzName" style="flex:1" value="${d ? esc(d.name) : ""}" placeholder="إنارة الممر"></div>
+    <div class="row"><label class="muted" style="width:120px">الفئة</label><select id="tzCat" onchange="tuyaFillDp()">${catOpts}</select>
+      <label class="muted">القسم</label><select id="tzSection">${secOpts}</select></div>
+    <div class="row"><label class="muted" style="width:120px">Device ID</label><input id="tzDevId" dir="ltr" style="flex:1" value="${d ? esc(d.tuya_device_id) : ""}"></div>
+    <div class="row"><label class="muted" style="width:120px">Local Key</label><input id="tzKey" dir="ltr" style="flex:1" value="" placeholder="${d ? "(محفوظ — اترك فارغًا للإبقاء)" : "16 حرفًا"}"></div>
+    <div class="row"><label class="muted" style="width:120px">IP (اختياري)</label><input id="tzIp" dir="ltr" value="${d && d.ip ? esc(d.ip) : ""}" placeholder="192.168.1.x">
+      <label class="muted">البروتوكول</label><select id="tzProto">${["3.3","3.1","3.4","3.5"].map(v => `<option ${d && d.protocol_version === v ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+    <div class="row"><label class="muted" style="width:120px">dp_map</label><input id="tzDp" dir="ltr" style="flex:1" value='${d ? esc(JSON.stringify(d.dp_map)) : TUYA_DP_TEMPLATES.light}'></div>
+    <div class="row"><span style="width:120px"></span>
+      <button class="primary" onclick="saveTuya('${id || ""}')">💾 حفظ</button>
+      <button class="ghost" onclick="document.getElementById('tuyaForm').style.display='none'">إلغاء</button></div>
+  </div>`;
+  document.getElementById("tzCat").value = d ? d.category : "light";
+}
+function tuyaFillDp() {
+  const cat = document.getElementById("tzCat").value;
+  document.getElementById("tzDp").value = TUYA_DP_TEMPLATES[cat] || "{}";
+}
+async function saveTuya(id) {
+  const row = {
+    school_id: schoolId,
+    name: document.getElementById("tzName").value.trim(),
+    category: document.getElementById("tzCat").value,
+    tuya_device_id: document.getElementById("tzDevId").value.trim(),
+    ip: document.getElementById("tzIp").value.trim() || null,
+    protocol_version: document.getElementById("tzProto").value,
+    section_id: document.getElementById("tzSection").value || null,
+  };
+  try { row.dp_map = JSON.parse(document.getElementById("tzDp").value || "{}"); }
+  catch (_) { document.getElementById("tuyaMsg").textContent = "dp_map ليس JSON صالحًا"; return; }
+  const key = document.getElementById("tzKey").value.trim();
+  if (key) row.local_key = key;
+  if (!row.name || !row.tuya_device_id) { document.getElementById("tuyaMsg").textContent = "الاسم و Device ID مطلوبان"; return; }
+  let error;
+  if (id) { ({ error } = await db.from("tuya_devices").update(row).eq("id", id)); }
+  else {
+    if (!row.local_key) { document.getElementById("tuyaMsg").textContent = "Local Key مطلوب"; return; }
+    ({ error } = await db.from("tuya_devices").insert(row));
+  }
+  if (error) { document.getElementById("tuyaMsg").textContent = "فشل: " + error.message; return; }
+  document.getElementById("tuyaForm").style.display = "none";
+  await loadTuya();
+  document.getElementById("tuyaMsg").textContent = "✓ حُفظ الجهاز";
+}
+async function deleteTuya(id) {
+  if (!confirm("حذف هذا الجهاز؟")) return;
+  const { error } = await db.from("tuya_devices").delete().eq("id", id);
+  if (error) { document.getElementById("tuyaMsg").textContent = "فشل: " + error.message; return; }
+  await loadTuya();
 }
 
 // ─── Sound library ──────────────────────────────────────────────────────────
