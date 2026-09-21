@@ -714,15 +714,18 @@ async function loadTuyaList() {
     .order("sort_order");
   tuyaDevices = data || [];
 }
-async function loadTuya() { await loadTuyaList(); renderTuya(); }
+async function loadTuya() { await loadTuyaList(); window._tabletUp = await tabletOnline(); renderTuya(); }
 const TUYA_ACTION_LABELS = { on: "تشغيل", off: "إطفاء", open: "فتح", close: "إغلاق", stop: "إيقاف", set: "ضبط" };
 function tuyaActionsFor(cat) {
   return cat === "curtain" ? ["open", "close", "stop", "set"] : (cat === "light" ? ["on", "off", "set"] : ["on", "off"]);
 }
 function renderTuya() {
   const box = document.getElementById("tuyaList");
-  if (!tuyaDevices.length) { box.innerHTML = '<p class="muted">لا توجد أجهزة بعد. أضف جهازًا للبدء.</p>'; return; }
-  box.innerHTML = tuyaDevices.map(d => {
+  const status = window._tabletUp
+    ? '<div class="subtle" style="margin-bottom:10px">🟢 التابلت متصل — التحكم فوري عبر الشبكة المحلية</div>'
+    : '<div class="subtle" style="margin-bottom:10px">⚪ التابلت غير متصل — سيُستخدم التحكم السحابي (يتطلب إعداد اعتماد تويا)</div>';
+  if (!tuyaDevices.length) { box.innerHTML = status + '<p class="muted">لا توجد أجهزة بعد. أضف جهازًا للبدء.</p>'; return; }
+  box.innerHTML = status + tuyaDevices.map(d => {
     let controls = "";
     if (d.category === "curtain") {
       controls = `<button class="ghost" onclick="tuyaCtl('${d.id}','open')">▲ فتح</button>
@@ -741,12 +744,26 @@ function renderTuya() {
     </div>`;
   }).join("");
 }
+// Control routing: use the tablet over the LAN when it's online; otherwise fall
+// back to Tuya's cloud (OpenAPI) via the `tuya` edge function.
 async function tuyaCtl(id, action, value) {
   const dev = tuyaDevices.find(x => x.id === id);
-  const { error } = await db.from("commands").insert({ school_id: schoolId, type: "device",
-    payload: { tuyaDeviceId: id, action, value: value ?? null }, section_id: dev?.section_id ?? null });
-  if (!error) wakeTablets(schoolId);
-  document.getElementById("tuyaMsg").textContent = error ? "فشل: " + error.message : "✓ أُرسل الأمر إلى التابلت";
+  const msg = document.getElementById("tuyaMsg");
+  if (await tabletOnline()) {
+    const { error } = await db.from("commands").insert({ school_id: schoolId, type: "device",
+      payload: { tuyaDeviceId: id, action, value: value ?? null }, section_id: dev?.section_id ?? null });
+    if (!error) wakeTablets(schoolId);
+    msg.textContent = error ? "فشل: " + error.message : "✓ أُرسل الأمر عبر التابلت";
+  } else {
+    const { data, error } = await db.functions.invoke("tuya", { body: { deviceId: id, action, value: value ?? null } });
+    if (error) msg.textContent = "التابلت غير متصل، وتعذّر التحكم السحابي: " + (error.message || "");
+    else if (data && data.error) msg.textContent = "التابلت غير متصل — التحكم السحابي: " + data.error;
+    else msg.textContent = "✓ عبر سحابة تويا (التابلت غير متصل)";
+  }
+}
+async function tabletOnline() {
+  const { data } = await db.from("devices").select("last_seen_at").eq("school_id", schoolId);
+  return (data || []).some(d => d.last_seen_at && (Date.now() - new Date(d.last_seen_at).getTime()) < 120000);
 }
 function showTuyaForm(id) {
   const d = id ? tuyaDevices.find(x => x.id === id) : null;
