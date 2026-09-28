@@ -1,0 +1,961 @@
+const SUPABASE_URL = "https://tcdknoalnynnbuvlozwy.supabase.co";
+const SUPABASE_KEY = "sb_publishable_D0YQfRkraujKgNEVpSNKhw_YMvm2oB7";
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const DAY_NAMES = ["ن","ث","ر","ع","خ","ج","س"];   // ISO bit0=Mon..bit6=Sun
+const DAY_ORDER = [6,0,1,2,3,4,5];                  // display Sun first
+const SOUNDS = { bell1:"جرس كهربائي", bell2:"جرس برونزي", bell3:"لحن ترحيبي", bell4:"دينغ دونغ", bell5:"غونغ هادئ" };
+const ADHAN_METHODS = { UMM_AL_QURA:"أم القرى (السعودية)", MUSLIM_WORLD_LEAGUE:"رابطة العالم الإسلامي", EGYPTIAN:"الهيئة المصرية", KARACHI:"كراتشي", DUBAI:"دبي", QATAR:"قطر", KUWAIT:"الكويت" };
+const CITIES = { "مكة المكرمة":[21.3891,39.8579], "الرياض":[24.7136,46.6753], "جدة":[21.4858,39.1925], "الدمام":[26.4207,50.0888], "المدينة المنورة":[24.5247,39.5692], "أبها":[18.2164,42.5053], "تبوك":[28.3838,36.5550] };
+const PRAYER_NAMES = ["الفجر","الظهر","العصر","المغرب","العشاء"];
+function defPrayer(){ return { enabled:true, latitude:24.7136, longitude:46.6753, method:"UMM_AL_QURA", adhanMask:0b11111, adhanSoundKey:"bell2", silenceAfterMin:10 }; }
+const DAY_MS = 86400000;
+
+let schools = [], devices = [], invoices = [], codes = [], PLANS = null;
+let filter = "all", currentTab = "overview", actorId = null, AUDIT_OK = true;
+// Records a provider action. Silently no-ops until migration 0007 is applied.
+async function audit(action, schoolId, detail) {
+  try { await db.from("audit_log").insert({ actor:actorId, action, school_id:schoolId||null, detail:detail||null }); }
+  catch (_) {}
+}
+const PLAN_FALLBACK = [{key:"basic",name_ar:"أساسي"},{key:"full",name_ar:"كامل"}];
+function planList(){ return (PLANS && PLANS.length) ? PLANS : PLAN_FALLBACK; }
+function planName(key){ return (planList().find(p=>p.key===key)?.name_ar) || key || "—"; }
+function planOptions(sel){ return planList().map(p=>`<option value="${esc(p.key)}" ${p.key===sel?"selected":""}>${esc(p.name_ar)}</option>`).join(""); }
+
+// ─── Auth ─────────────────────────────────────────────────────────────────
+async function login() {
+  const { error } = await db.auth.signInWithPassword({
+    email: document.getElementById("email").value.trim(),
+    password: document.getElementById("password").value,
+  });
+  if (error) return show("loginMsg", "فشل الدخول: " + error.message, true);
+  init();
+}
+async function init() {
+  const { data: { session } } = await db.auth.getSession();
+  if (!session) return;
+  const { data: sa } = await db.from("super_admins").select("user_id").maybeSingle();
+  if (!sa) return show("loginMsg", "هذا الحساب ليس مشرفًا عامًا.", true);
+  actorId = session.user.id;
+  myEmail = session.user.email || "";
+  document.getElementById("login").hidden = true;
+  document.getElementById("app").hidden = false;
+  document.getElementById("logoutBtn").hidden = false;
+  await loadAll();
+  loadNotifCount();
+  showTab("overview");
+}
+document.getElementById("logoutBtn").onclick = async () => { await db.auth.signOut(); location.reload(); };
+
+// ─── Data ─────────────────────────────────────────────────────────────────
+async function loadAll() {
+  const [a,b,c,d] = await Promise.all([
+    db.from("schools").select("*").order("created_at"),
+    db.from("devices").select("id, school_id, name, app_version, last_seen_at, section_id"),
+    db.from("invoices").select("id, school_id, amount, currency, period_months, status, created_at, paid_at").order("created_at",{ascending:false}).limit(200),
+    db.from("activation_codes").select("code, school_id, used_at"),
+  ]);
+  schools = a.data || []; devices = b.data || []; invoices = c.data || []; codes = d.data || [];
+  const p = await db.from("plans").select("*").order("sort_order");
+  PLANS = p.error ? null : (p.data || []);   // null = migration 0006 not applied yet
+  document.getElementById("invSchool").innerHTML = schools.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join("");
+}
+function schoolStatus(s) {
+  if (!s.active) return "stopped";
+  if (!s.subscription_until) return "active";
+  const until = new Date(s.subscription_until), now = new Date();
+  if (until < now) return "expired";
+  if ((until - now) < 30*DAY_MS) return "expiring";
+  return "active";
+}
+function deviceCount(id){ return devices.filter(d=>d.school_id===id).length; }
+function isOnline(d){ return d.last_seen_at && (Date.now()-new Date(d.last_seen_at)) < DAY_MS; }
+function freeCodes(id){ return codes.filter(c=>c.school_id===id && !c.used_at).map(c=>c.code); }
+
+// ─── Overview ───────────────────────────────────────────────────────────────
+function renderOverview() {
+  // Urgent alert banner: subscriptions expiring within 7 days or expired,
+  // and devices offline for more than 48 hours.
+  const nowMs = Date.now();
+  const urgentSubs = schools.filter(s=>{ const st=schoolStatus(s); if(st==="expired")return true;
+    return s.subscription_until && (new Date(s.subscription_until)-nowMs) < 7*DAY_MS && (new Date(s.subscription_until)-nowMs)>=0; });
+  const veryStale = devices.filter(d=>d.last_seen_at && (nowMs-new Date(d.last_seen_at)) > 2*DAY_MS);
+  const parts = [];
+  if (urgentSubs.length) parts.push(`${urgentSubs.length} اشتراك يحتاج تجديدًا عاجلًا`);
+  if (veryStale.length) parts.push(`${veryStale.length} جهاز منقطع أكثر من 48 ساعة`);
+  document.getElementById("alertBanner").innerHTML = parts.length
+    ? `<div class="card" style="background:#FDF0E8;border-color:#F0C9A8;margin-bottom:16px;cursor:pointer" data-onclick="h3">
+        <b class="warn-txt">⚠️ تنبيه:</b> ${parts.join(" · ")} — <span class="muted">اضغط للمراجعة</span></div>`
+    : "";
+
+  const active = schools.filter(s=>schoolStatus(s)!=="stopped" && schoolStatus(s)!=="expired").length;
+  const online = devices.filter(isOnline).length;
+  const now = new Date(), m = now.getMonth(), y = now.getFullYear();
+  const revenue = invoices.filter(i=>i.status==="paid" && i.paid_at && new Date(i.paid_at).getMonth()===m && new Date(i.paid_at).getFullYear()===y)
+    .reduce((a,i)=>a+Number(i.amount||0),0);
+  const expiring = schools.filter(s=>schoolStatus(s)==="expiring").length;
+  const expired = schools.filter(s=>schoolStatus(s)==="expired").length;
+  document.getElementById("kpis").innerHTML = `
+    <div class="kpi"><div class="l">مدارس نشطة</div><div class="n">${active}</div></div>
+    <div class="kpi"><div class="l">أجهزة متصلة الآن</div><div class="n">${online}<span class="muted" style="font-size:15px"> / ${devices.length}</span></div></div>
+    <div class="kpi"><div class="l">إيراد الشهر</div><div class="n">${revenue.toLocaleString("ar")} <span class="muted" style="font-size:15px">ر.س</span></div></div>
+    <div class="kpi"><div class="l">اشتراكات تنتهي خلال 30 يومًا</div><div class="n ${expired?"bad":"warn"}">${expiring}${expired?` <span style="font-size:15px">(+${expired} منتهٍ)</span>`:""}</div></div>`;
+
+  const soon = schools.filter(s=>["expiring","expired"].includes(schoolStatus(s)))
+    .sort((a,b)=>new Date(a.subscription_until)-new Date(b.subscription_until));
+  const offline = devices.filter(d=>!isOnline(d));
+  let html = "";
+  if (soon.length) html += `<h3 style="margin-top:6px">اشتراكات تحتاج تجديدًا</h3>` + soon.map(s=>{
+    const st = schoolStatus(s);
+    return `<div class="row" style="padding:9px 0;border-bottom:1px solid #EFF1F7">
+      <span style="flex:1;cursor:pointer" data-onclick="h20" data-h20a0="${esc(s.id)}"><b>${esc(s.name)}</b></span>
+      <span class="mono muted" dir="ltr">${s.subscription_until||"—"}</span>
+      <span class="pill ${st==="expired"?"r":"a"}">${st==="expired"?"منتهٍ":"ينتهي قريبًا"}</span></div>`;
+  }).join("");
+  if (offline.length) html += `<h3 style="margin-top:16px">أجهزة منقطعة (أكثر من 24 ساعة)</h3>` + offline.slice(0,10).map(d=>{
+    const s = schools.find(x=>x.id===d.school_id);
+    return `<div class="row" style="padding:9px 0;border-bottom:1px solid #EFF1F7">
+      <span style="flex:1">${esc(s?.name||"?")} — ${esc(d.name)}</span>
+      <span class="mono muted" dir="ltr">${fmt(d.last_seen_at)}</span></div>`;
+  }).join("");
+  document.getElementById("attention").innerHTML = html || '<p class="muted">كل شيء على ما يرام ✓</p>';
+
+  // Revenue breakdown
+  const paid = invoices.filter(i=>i.status==="paid" && i.paid_at);
+  const thisMonth = paid.filter(i=>new Date(i.paid_at).getMonth()===m && new Date(i.paid_at).getFullYear()===y).reduce((a,i)=>a+Number(i.amount||0),0);
+  const thisYear = paid.filter(i=>new Date(i.paid_at).getFullYear()===y).reduce((a,i)=>a+Number(i.amount||0),0);
+  const pending = invoices.filter(i=>i.status==="pending").reduce((a,i)=>a+Number(i.amount||0),0);
+  const rev = (n)=>n.toLocaleString("ar")+" ر.س";
+  document.getElementById("revenue").innerHTML = `
+    <div class="row" style="padding:9px 0;border-bottom:1px solid #EFF1F7"><span style="flex:1" class="muted">محصّل هذا الشهر</span><b class="mono">${rev(thisMonth)}</b></div>
+    <div class="row" style="padding:9px 0;border-bottom:1px solid #EFF1F7"><span style="flex:1" class="muted">محصّل هذه السنة</span><b class="mono">${rev(thisYear)}</b></div>
+    <div class="row" style="padding:9px 0"><span style="flex:1" class="muted">فواتير معلّقة</span><b class="mono warn-txt">${rev(pending)}</b></div>`;
+}
+
+// ─── Schools list ─────────────────────────────────────────────────────────
+const FILTERS = { all:"الكل", active:"نشطة", expiring:"تنتهي قريبًا", expired:"منتهية", stopped:"موقوفة" };
+function renderSchools() {
+  document.getElementById("schoolChips").innerHTML = Object.entries(FILTERS).map(([k,v])=>{
+    const n = k==="all" ? schools.length : schools.filter(s=>schoolStatus(s)===k).length;
+    return `<button class="chip ${filter===k?"on":""}" data-onclick="h21" data-h21a0="${esc(k)}">${v} <span class="mono">${n}</span></button>`;
+  }).join("");
+  const q = (document.getElementById("search").value||"").trim();
+  const rows = schools
+    .filter(s=>filter==="all" || schoolStatus(s)===filter)
+    .filter(s=>!q || s.name.includes(q));
+  const statusPill = { active:'<span class="pill g">نشطة</span>', expiring:'<span class="pill a">تنتهي قريبًا</span>', expired:'<span class="pill r">منتهٍ</span>', stopped:'<span class="pill r">موقوفة</span>' };
+  document.getElementById("schoolsBody").innerHTML = rows.map(s=>{
+    const fc = freeCodes(s.id);
+    return `<tr class="clickable" data-onclick="h20" data-h20a0="${esc(s.id)}">
+      <td><b>${esc(s.name)}</b></td>
+      <td>${esc(planName(s.plan))}</td>
+      <td class="mono" dir="ltr">${s.subscription_until||"—"}</td>
+      <td>${statusPill[schoolStatus(s)]}</td>
+      <td class="mono">${deviceCount(s.id)}</td>
+      <td>${fc.length?`<code>${fc[0]}</code>`:'<span class="muted">—</span>'}</td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="6" class="muted" style="padding:24px;text-align:center">لا نتائج</td></tr>`;
+}
+function setFilter(k){ filter=k; renderSchools(); }
+
+function openNewSchool() {
+  const name = prompt("اسم المدرسة الجديدة:");
+  if (!name || !name.trim()) return;
+  db.rpc("create_school_with_code", { p_name:name.trim(), p_plan:"basic", p_until:null }).then(async ({data,error})=>{
+    if (error) return show("msg","فشل: "+error.message, true);
+    audit("school.create", data?.[0]?.school_id, esc(name.trim()));
+    show("msg", `✓ أُنشئت — رمز التفعيل: ${data?.[0]?.activation_code}`);
+    await loadAll(); renderSchools(); renderOverview();
+  });
+}
+
+// ─── School detail ──────────────────────────────────────────────────────────
+let cur = null, cfg = { v:2, sections:[] }, cfgVersion = 0, curSched = 0, curSec = 0;
+function normalizeCfg(p){
+  const normSec = s => ({ id:s.id??null, name:s.name||"قسم", defaultSoundKey:s.defaultSoundKey||"bell1", prayer:s.prayer||null, schedules:Array.isArray(s.schedules)?s.schedules:[] });
+  if (p && Array.isArray(p.sections)) return { v:2, sections:p.sections.map(normSec) };
+  const scheds = p && Array.isArray(p.schedules) ? p.schedules : [];
+  return { v:2, sections:[normSec({ name:"عام", schedules:scheds })] };
+}
+function cfgSec(){ return cfg.sections[curSec]; }
+function cfgScheds(){ return cfgSec()?cfgSec().schedules:[]; }
+
+async function openSchool(id) {
+  cur = schools.find(s=>s.id===id);
+  if (!cur) return;
+  const [{data:conf}, {data:logs}, {data:cmds}] = await Promise.all([
+    db.from("school_configs").select("version,payload").eq("school_id",id).maybeSingle(),
+    db.from("device_logs").select("event_name,planned_at,executed_at,status").eq("school_id",id).order("planned_at",{ascending:false}).limit(30),
+    db.from("commands").select("id,type,payload,created_at,delivered_at").eq("school_id",id).order("id",{ascending:false}).limit(10),
+  ]);
+  cfgVersion = conf?.version||0;
+  cfg = normalizeCfg(conf?.payload);
+  cfg.sections.forEach(sc=>{ if(sc.schedules.length===0) sc.schedules.push({name:"صباحي",isActive:true,events:[]}); });
+  curSec = 0;
+  curSched = Math.max(0, cfgScheds().findIndex(s=>s.isActive));
+  document.getElementById("app").hidden = true;
+  const el = document.getElementById("detail"); el.hidden = false;
+  el.dataset.logs = JSON.stringify(logs||[]);
+  el.dataset.cmds = JSON.stringify(cmds||[]);
+  el.dataset.users = "[]";
+  renderDetail();
+  loadSchoolUsers();   // async — fills the accounts section when ready
+}
+
+async function loadSchoolUsers() {
+  if (!cur) return;
+  const { data, error } = await db.functions.invoke("admin-users", { body:{ action:"list", schoolId:cur.id } });
+  document.getElementById("detail").dataset.users = JSON.stringify((!error && data?.users) || []);
+  renderSchoolUsers();
+}
+function renderSchoolUsers() {
+  const box = document.getElementById("schoolUsers");
+  if (!box) return;
+  const users = JSON.parse(document.getElementById("detail").dataset.users||"[]");
+  box.innerHTML = users.length ? users.map(u=>`<div class="row" style="padding:8px 0;border-bottom:1px solid #EFF1F7">
+      <span style="flex:1" dir="ltr">${esc(u.email||"—")}</span>
+      <button class="ghost sm" data-onclick="h22" data-h22a0="${esc(u.id)}">تغيير كلمة المرور</button>
+      <button class="ghost sm danger" data-onclick="h23" data-h23a0="${esc(u.id)}" data-h23a1="${esc(u.email||"")}">حذف</button>
+    </div>`).join("") : '<p class="muted">لا حسابات دخول بعد — أنشئ حسابًا لتسليمه للمدرسة.</p>';
+}
+async function createSchoolUser() {
+  const email = document.getElementById("suEmail").value.trim();
+  const pw = document.getElementById("suPass").value;
+  if (!email || pw.length < 6) return show("msg","أدخل بريدًا وكلمة مرور (6 أحرف على الأقل)", true);
+  show("msg","… جارٍ الإنشاء");
+  const { data, error } = await db.functions.invoke("admin-users", { body:{ action:"create", schoolId:cur.id, email, password:pw } });
+  const err = error || data?.error;
+  if (err) return show("msg","فشل: " + (data?.error || err.message || err), true);
+  audit("account.create", cur.id, `${esc(cur.name)}: ${esc(email)}`);
+  document.getElementById("suEmail").value=""; document.getElementById("suPass").value="";
+  await loadSchoolUsers(); show("msg","✓ أُنشئ الحساب — سلّم بيانات الدخول للمدرسة");
+}
+async function resetSchoolUser(userId) {
+  const pw = prompt("كلمة المرور الجديدة (6 أحرف على الأقل):");
+  if (!pw || pw.length < 6) return;
+  const { data, error } = await db.functions.invoke("admin-users", { body:{ action:"reset", userId, password:pw } });
+  const err = error || data?.error;
+  show("msg", err ? "فشل: "+(data?.error||err.message||err) : "✓ غُيّرت كلمة المرور", !!err);
+}
+async function removeSchoolUser(userId, email) {
+  if (!confirm(`حذف حساب الدخول "${email}"؟`)) return;
+  const { data, error } = await db.functions.invoke("admin-users", { body:{ action:"remove", userId } });
+  const err = error || data?.error;
+  if (err) return show("msg","فشل: "+(data?.error||err.message||err), true);
+  await loadSchoolUsers(); show("msg","✓ حُذف الحساب");
+}
+function backToList(){ document.getElementById("detail").hidden = true; document.getElementById("app").hidden = false; loadAll().then(()=>{ renderSchools(); renderOverview(); loadDevices(); }); }
+
+function renderDetail() {
+  const s = cur, st = schoolStatus(s);
+  const fc = freeCodes(s.id);
+  const myDevices = devices.filter(d=>d.school_id===s.id);
+  const myInvoices = invoices.filter(i=>i.school_id===s.id);
+  const logs = JSON.parse(document.getElementById("detail").dataset.logs||"[]");
+  const cmds = JSON.parse(document.getElementById("detail").dataset.cmds||"[]");
+  const statusPill = { active:'<span class="pill g">نشطة</span>', expiring:'<span class="pill a">تنتهي قريبًا</span>', expired:'<span class="pill r">منتهٍ</span>', stopped:'<span class="pill r">موقوفة</span>' };
+
+  document.getElementById("detail").innerHTML = `
+    <button class="back" data-onclick="h24">→ رجوع للمدارس</button>
+
+    <div class="card">
+      <div class="row" style="align-items:flex-start">
+        <div style="flex:1">
+          <div class="row"><h2 style="margin:0">${esc(s.name)}</h2> ${statusPill[st]}</div>
+          <div class="muted" style="margin-top:4px">مُنشأة ${fmt(s.created_at)}</div>
+        </div>
+        <button class="ghost sm" data-onclick="h25">تعديل الاسم</button>
+        <button class="ghost sm ${s.active?'danger':''}" data-onclick="h26">${s.active?"إيقاف المدرسة":"تفعيل المدرسة"}</button>
+        <button class="ghost sm danger" data-onclick="h27">حذف</button>
+      </div>
+      <div class="row" style="margin-top:16px">
+        <label class="muted">الخطة</label>
+        <select data-onchange="h28">${planOptions(s.plan)}</select>
+        <label class="muted">الاشتراك حتى</label>
+        <input type="date" value="${s.subscription_until||""}" data-onchange="h29">
+        <span style="flex:1"></span>
+        <label class="muted">رموز التفعيل الحرة</label>
+        ${fc.length?fc.map(c=>`<code data-onclick="h30" data-h30a0="${esc(c)}" title="نسخ" style="cursor:pointer">${c} ⧉</code>`).join(" "):'<span class="muted">—</span>'}
+        <button class="ghost sm" data-onclick="h31">+ رمز</button>
+      </div>
+    </div>
+
+    <!-- Remote schedule editor -->
+    <div class="card">
+      <div class="row" style="margin-bottom:12px">
+        <h2 style="flex:1;margin:0">الأقسام والجداول — تحكم عن بُعد</h2>
+        <button class="primary" data-onclick="h32">💾 حفظ ونشر للتابلت</button>
+      </div>
+      <div class="row" id="sectionBar" style="margin-bottom:10px"></div>
+      <div class="row subtle" id="sectionMeta" style="margin-bottom:12px"></div>
+      <div class="row" style="margin-bottom:12px">
+        <div class="row" id="schedPills"></div>
+        <button class="ghost sm" data-onclick="h33">+ جدول</button>
+      </div>
+      <div id="schedMeta"></div>
+      <div style="overflow-x:auto">
+        <table id="eventsTbl"><thead><tr><th>الوقت</th><th>الاسم</th><th>المدة</th><th>الأيام</th><th>النغمة</th><th>الصوت</th><th></th></tr></thead><tbody></tbody></table>
+      </div>
+      <button class="ghost sm" style="margin-top:10px" data-onclick="h34">+ إضافة حدث</button>
+      <p class="muted">بعد الحفظ يسحب التابلت الجدول خلال ≤ 5 دقائق (أو فورًا بزر "مزامنة الآن").</p>
+      <div id="prayerBox" style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px"></div>
+    </div>
+
+    <div class="grid2">
+      <!-- Remote control -->
+      <div class="card">
+        <h3>تحكم فوري عن بُعد</h3>
+        <div class="row" style="margin-bottom:8px">
+          <label class="muted">إلى</label>
+          <select id="annTarget">${targetOptions()}</select>
+        </div>
+        <textarea id="annText" rows="2" placeholder="نص النداء (يُنطق بالعربية على المكبرات)…" style="width:100%"></textarea>
+        <div class="row" style="margin-top:10px">
+          <button class="primary" data-onclick="h35">📢 إرسال النداء</button>
+          <button class="ghost" data-onclick="h36">🔔 جرس الآن</button>
+        </div>
+        <h3 style="margin-top:18px">آخر الأوامر</h3>
+        ${cmds.length?cmds.map(c=>`<div class="row" style="padding:7px 0;border-bottom:1px solid #EFF1F7">
+          <span style="flex:1">${c.type==="bell"?"🔔 جرس":"📢 "+esc(c.payload?.text||"")}</span>
+          <span class="${c.delivered_at?"ok-txt":"warn-txt"}" style="font-size:13px">${c.delivered_at?"سُلّم ✓":"بانتظار التابلت…"}</span></div>`).join(""):'<p class="muted">لا أوامر بعد</p>'}
+      </div>
+
+      <!-- Devices + logs -->
+      <div class="card">
+        <h3>الأجهزة (${myDevices.length})</h3>
+        ${myDevices.length?myDevices.map(d=>`<div class="row" style="padding:7px 0;border-bottom:1px solid #EFF1F7">
+          <span style="width:9px;height:9px;border-radius:50%;background:${isOnline(d)?"var(--green)":"#C9CFCB"}"></span>
+          <span style="flex:1">${esc(d.name)} <span class="muted mono">${esc(d.app_version||"")}</span></span>
+          <select data-onchange="h37" data-h37a0="${esc(d.id)}">${sectionOptions(d.section_id)}</select>
+          <button class="ghost sm danger" data-onclick="h38" data-h38a0="${esc(d.id)}">فصل</button></div>`).join(""):'<p class="muted">لا أجهزة مرتبطة بعد</p>'}
+        <h3 style="margin-top:18px">آخر السجلّات</h3>
+        <div style="max-height:220px;overflow-y:auto">
+        ${logs.length?logs.map(l=>{
+          const cls = l.status==="EXECUTED"?"ok-txt":l.status==="SILENCED"?"warn-txt":"bad-txt";
+          return `<div class="row" style="padding:6px 0;border-bottom:1px solid #EFF1F7;font-size:13px">
+            <span style="flex:1">${esc(l.event_name)}</span>
+            <span class="mono muted" dir="ltr">${fmt(l.planned_at)}</span>
+            <span class="${cls}">${esc(l.status)}</span></div>`;
+        }).join(""):'<p class="muted">لا سجل بعد</p>'}
+        </div>
+      </div>
+    </div>
+
+    <!-- School login accounts -->
+    <div class="card">
+      <div class="row" style="margin-bottom:12px">
+        <h3 style="flex:1;margin:0">حسابات دخول المدرسة</h3>
+        <input id="suEmail" type="email" placeholder="بريد المدرسة" dir="ltr" style="min-width:200px">
+        <input id="suPass" type="text" placeholder="كلمة المرور" dir="ltr" style="width:150px">
+        <button class="primary sm" data-onclick="h39">+ إنشاء حساب</button>
+      </div>
+      <div id="schoolUsers"><p class="muted">… جارٍ التحميل</p></div>
+      <p class="muted">يستخدم هذا الحساب للدخول إلى لوحة المدرسة وتطبيق المدير. لا حاجة لأوامر SQL بعد الآن.</p>
+    </div>
+
+    <!-- Invoices -->
+    <div class="card">
+      <div class="row" style="margin-bottom:12px">
+        <h3 style="flex:1;margin:0">الفواتير</h3>
+        <input id="dAmount" type="number" placeholder="المبلغ" style="width:100px">
+        <select id="dMonths"><option value="12">سنة</option><option value="6">6 أشهر</option><option value="3">3 أشهر</option><option value="1">شهر</option></select>
+        <button class="primary sm" data-onclick="h40">+ فاتورة</button>
+      </div>
+      <table><thead><tr><th>#</th><th>المبلغ</th><th>المدة</th><th>الحالة</th><th>أُنشئت</th><th></th></tr></thead>
+      <tbody>${myInvoices.map(inv=>{
+        const sp = inv.status==="paid"?'<span class="pill g">مدفوعة</span>':inv.status==="cancelled"?'<span class="muted">ملغاة</span>':'<span class="pill a">معلّقة</span>';
+        const act = inv.status==="pending"?`<button class="ghost sm" data-onclick="h41" data-h41a0="${esc(JSON.stringify(inv.id))}">✓ تحصيل</button> <button class="ghost sm danger" data-onclick="h42" data-h42a0="${esc(JSON.stringify(inv.id))}">إلغاء</button>`:"";
+        return `<tr><td>${inv.id}</td><td class="mono" dir="ltr">${inv.amount} ${inv.currency}</td><td>${inv.period_months} شهر</td><td>${sp}</td><td class="mono" dir="ltr">${fmt(inv.created_at)}</td><td>${act}</td></tr>`;
+      }).join("")||'<tr><td colspan="6" class="muted">لا فواتير</td></tr>'}</tbody></table>
+    </div>
+  `;
+  renderSectionBar();
+  renderSchoolUsers();
+}
+
+// ── School patch actions ──
+async function patchSchool(fields) {
+  const { error } = await db.from("schools").update(fields).eq("id", cur.id);
+  if (error) return show("msg","فشل: "+error.message, true);
+  const k = Object.keys(fields)[0];
+  audit("school."+k, cur.id, `${esc(cur.name)}: ${k}=${JSON.stringify(fields[k])}`);
+  Object.assign(cur, fields); await loadAll(); cur = schools.find(s=>s.id===cur.id); renderDetail();
+  show("msg","✓ حُدّثت");
+}
+function renameSchool(){ const n=prompt("اسم المدرسة:",cur.name); if(n&&n.trim()) patchSchool({name:n.trim()}); }
+function toggleActive(){ patchSchool({active:!cur.active}); }
+async function deleteSchool(){ if(!confirm(`حذف "${cur.name}" نهائيًا بكل بياناتها؟`))return;
+  const {error}=await db.from("schools").delete().eq("id",cur.id);
+  if(error) return show("msg","فشل: "+error.message,true);
+  show("msg","✓ حُذفت"); backToList(); }
+async function newCode(){ const {data,error}=await db.rpc("new_activation_code",{p_school:cur.id});
+  if(error) return show("msg","فشل: "+error.message,true);
+  await loadAll(); renderDetail(); show("msg","✓ رمز جديد: "+data); }
+function copyCode(c){ navigator.clipboard?.writeText(c).then(()=>show("msg","✓ نُسخ الرمز: "+c)); }
+
+// ── Sections ──
+function targetOptions(){ return `<option value="">كل المدرسة</option>` + cfg.sections.filter(s=>s.id).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join(""); }
+function sectionOptions(sel){ return `<option value="">كل المدرسة</option>` + cfg.sections.filter(s=>s.id).map(s=>`<option value="${s.id}" ${s.id===sel?"selected":""}>${esc(s.name)}</option>`).join(""); }
+function renderSectionBar() {
+  document.getElementById("sectionBar").innerHTML =
+    cfg.sections.map((s,i)=>`<button class="sched-pill ${i===curSec?"active":""}" data-onclick="h43" data-h43a0="${esc(JSON.stringify(i))}">${esc(s.name)}</button>`).join("")
+    + `<button class="ghost sm" data-onclick="h44">+ قسم</button>`;
+  renderSectionMeta(); renderSchedPills();
+}
+function pickSection(i){ curSec=i; curSched=Math.max(0,cfgScheds().findIndex(s=>s.isActive)); renderSectionBar(); }
+function renderSectionMeta() {
+  const s = cfgSec(); const el = document.getElementById("sectionMeta");
+  if (!s) { el.innerHTML=""; return; }
+  const sounds = Object.entries(SOUNDS).map(([k,v])=>`<option value="${k}" ${s.defaultSoundKey===k?"selected":""}>${v}</option>`).join("");
+  el.innerHTML = `<label class="muted">الصوت الافتراضي للقسم</label>
+    <select data-onchange="h45">${sounds}</select>
+    <span style="flex:1"></span>
+    <button class="ghost sm" data-onclick="h46">تعديل اسم القسم</button>
+    <button class="ghost sm danger" data-onclick="h47">حذف القسم</button>`;
+}
+async function addSection(){
+  const name=prompt("اسم القسم الجديد (مثال: الابتدائي):"); if(!name||!name.trim())return;
+  const {data,error}=await db.from("sections").insert({school_id:cur.id,name:name.trim(),sort_order:cfg.sections.length}).select("id").single();
+  if(error) return show("msg","فشل: "+error.message,true);
+  cfg.sections.push({id:data.id,name:name.trim(),defaultSoundKey:"bell1",prayer:null,schedules:[{name:"صباحي",isActive:true,events:[]}]});
+  curSec=cfg.sections.length-1; curSched=0; renderSectionBar(); publishConfig(true);
+}
+async function renameSection(){
+  const s=cfgSec(); const name=prompt("اسم القسم:",s.name);
+  if(!name||!name.trim()||name.trim()===s.name)return;
+  if(s.id){ const {error}=await db.from("sections").update({name:name.trim()}).eq("id",s.id); if(error) return show("msg","فشل: "+error.message,true); }
+  s.name=name.trim(); renderSectionBar(); publishConfig(true);
+}
+async function deleteSection(){
+  if(cfg.sections.length<=1)return show("msg","يجب إبقاء قسم واحد على الأقل",true);
+  const s=cfgSec();
+  if(s.id){ const {count}=await db.from("devices").select("id",{count:"exact",head:true}).eq("section_id",s.id);
+    if(count) return show("msg","لا يمكن حذف قسم مرتبط بأجهزة — أعد ربط الأجهزة أولًا",true); }
+  if(!confirm(`حذف قسم "${s.name}" وكل جداوله؟`))return;
+  if(s.id){ const {error}=await db.from("sections").delete().eq("id",s.id); if(error) return show("msg","فشل: "+error.message,true); }
+  cfg.sections.splice(curSec,1); curSec=0; curSched=Math.max(0,cfgScheds().findIndex(x=>x.isActive)); renderSectionBar(); publishConfig(true);
+}
+async function assignDevice(id, section){
+  const {error}=await db.rpc("set_device_section",{p_device:id,p_section:section||null});
+  if(error) return show("msg","فشل: "+error.message,true);
+  const d=devices.find(x=>x.id===id); if(d) d.section_id=section||null;
+  show("msg","✓ حُدّث قسم الجهاز");
+}
+
+// ── Remote schedule editor (scoped to the current section) ──
+function renderSchedPills() {
+  document.getElementById("schedPills").innerHTML = cfgScheds().map((s,i)=>
+    `<button class="sched-pill ${i===curSched?"active":""}" data-onclick="h48" data-h48a0="${esc(JSON.stringify(i))}">${esc(s.name)}${s.isActive?" ✓":""}</button>`).join("")
+    || '<span class="muted">لا جداول — أضف جدولًا</span>';
+  renderSchedMeta(); renderEvents(); renderPrayer();
+}
+
+// ── Per-section prayer (adhan) ──
+function renderPrayer() {
+  const box = document.getElementById("prayerBox");
+  if (!box || !cfgSec()) return;
+  const p = cfgSec().prayer;
+  const head = `<div class="row" style="margin-bottom:10px"><h3 style="flex:1;margin:0">🕌 أذان القسم «${esc(cfgSec().name)}»</h3>
+    <label><input type="checkbox" ${p?"checked":""} data-onchange="h49"> إعدادات أذان مستقلة</label></div>`;
+  if (!p) { box.innerHTML = head + `<p class="muted">القسم يستخدم إعدادات الأذان المحفوظة على التابلت. فعّل الخيار لضبط أذان خاص بالقسم.</p>`; return; }
+  const methodOpts = Object.entries(ADHAN_METHODS).map(([k,v])=>`<option value="${k}" ${p.method===k?"selected":""}>${v}</option>`).join("");
+  const cityOpts = Object.keys(CITIES).map(c=>`<option value="${c}">${c}</option>`).join("");
+  const soundOpts = Object.entries(SOUNDS).map(([k,v])=>`<option value="${k}" ${p.adhanSoundKey===k?"selected":""}>${v}</option>`).join("");
+  const prayerChecks = PRAYER_NAMES.map((n,i)=>`<label style="white-space:nowrap"><input type="checkbox" ${(p.adhanMask&(1<<i))?"checked":""} data-onchange="h50" data-h50a0="${esc(JSON.stringify(i))}"> ${n}</label>`).join(" ");
+  box.innerHTML = head + `
+    <div class="row subtle" style="gap:12px;margin-bottom:10px">
+      <label><input type="checkbox" ${p.enabled?"checked":""} data-onchange="h51"> تفعيل الأذان</label>
+      <label class="muted">المدينة</label><select data-onchange="h52"><option value="">— اختر —</option>${cityOpts}</select>
+      <label class="muted">خط العرض</label><input type="number" step="0.0001" value="${p.latitude}" style="width:100px" data-onchange="h53">
+      <label class="muted">خط الطول</label><input type="number" step="0.0001" value="${p.longitude}" style="width:100px" data-onchange="h54">
+    </div>
+    <div class="row" style="gap:12px;margin-bottom:10px">
+      <label class="muted">طريقة الحساب</label><select data-onchange="h55">${methodOpts}</select>
+      <label class="muted">صوت الأذان</label><select data-onchange="h56">${soundOpts}</select>
+      <label class="muted">إسكات الجرس بعد الأذان (د)</label><input type="number" min="0" max="60" value="${p.silenceAfterMin}" style="width:70px" data-onchange="h57">
+    </div>
+    <div class="row" style="gap:12px"><span class="muted">الصلوات المفعّلة:</span>${prayerChecks}</div>`;
+}
+function togglePrayer(on){ cfgSec().prayer = on ? defPrayer() : null; renderPrayer(); }
+function setPrayer(k,v){ if(cfgSec().prayer) cfgSec().prayer[k]=v; }
+function togglePrayerBit(i,on){ const p=cfgSec().prayer; if(!p)return; p.adhanMask = on ? (p.adhanMask|(1<<i)) : (p.adhanMask&~(1<<i)); }
+function pickCity(name){ const c=CITIES[name]; if(Array.isArray(c)&&cfgSec().prayer){ cfgSec().prayer.latitude=c[0]; cfgSec().prayer.longitude=c[1]; renderPrayer(); } }
+function pickSched(i){ curSched=i; renderSchedPills(); }
+function renderSchedMeta() {
+  const s = cfgScheds()[curSched];
+  const el = document.getElementById("schedMeta");
+  if (!s) { el.innerHTML=""; return; }
+  el.innerHTML = `<div class="row subtle" style="margin-bottom:12px">
+    <label class="muted">الاسم</label><input value="${esc(s.name)}" data-onchange="h58" data-h58a0="${esc(JSON.stringify(curSched))}" style="width:200px">
+    <label><input type="checkbox" ${s.isActive?"checked":""} data-onchange="h59" data-h59a0="${esc(JSON.stringify(curSched))}"> الجدول النشط</label>
+    <span style="flex:1"></span>
+    <button class="ghost sm danger" data-onclick="h60" data-h60a0="${esc(JSON.stringify(curSched))}">حذف الجدول</button></div>`;
+}
+function setActiveSched(i,on){ cfgScheds().forEach((x,j)=>x.isActive=(on&&j===i)); renderSchedPills(); }
+function delSchedule(i){ if(cfgScheds().length<=1)return show("msg","يجب إبقاء جدول واحد",true);
+  if(confirm("حذف "+cfgScheds()[i].name+"؟")){ cfgScheds().splice(i,1); curSched=0; renderSchedPills(); } }
+function addSchedule(){ const n=prompt("اسم الجدول:","جدول جديد"); if(!n)return;
+  cfgScheds().push({name:n,isActive:cfgScheds().length===0,events:[]}); curSched=cfgScheds().length-1; renderSchedPills(); }
+function addEvent(){ const s=cfgScheds()[curSched]; if(!s)return show("msg","أضف جدولًا أولًا",true);
+  s.events.push({name:"حدث جديد",startMinuteOfDay:420,durationMin:45,daysOfWeek:0b1001111,volume:1,enabled:true,sortOrder:0,soundKey:""}); renderEvents(); }
+function renderEvents() {
+  const s = cfgScheds()[curSched];
+  const body = document.querySelector("#eventsTbl tbody");
+  if (!s) { body.innerHTML=""; return; }
+  s.events.sort((a,b)=>a.startMinuteOfDay-b.startMinuteOfDay);
+  const defName = SOUNDS[cfgSec()?.defaultSoundKey] || "الافتراضي";
+  body.innerHTML = s.events.map((e,i)=>{
+    const t = String(Math.floor(e.startMinuteOfDay/60)).padStart(2,"0")+":"+String(e.startMinuteOfDay%60).padStart(2,"0");
+    const days = DAY_ORDER.map(bit=>`<label><input type="checkbox" ${(e.daysOfWeek&(1<<bit))?"checked":""} data-onchange="h61" data-h61a0="${esc(JSON.stringify(i))}" data-h61a1="${esc(JSON.stringify(bit))}">${DAY_NAMES[bit]}</label>`).join("");
+    const sounds = `<option value="" ${!e.soundKey?"selected":""}>افتراضي القسم (${esc(defName)})</option>` +
+      Object.entries(SOUNDS).map(([k,v])=>`<option value="${k}" ${e.soundKey===k?"selected":""}>${v}</option>`).join("");
+    return `<tr>
+      <td><input type="time" value="${t}" data-onchange="h62" data-h62a0="${esc(JSON.stringify(i))}" style="width:120px"></td>
+      <td><input value="${esc(e.name)}" data-onchange="h63" data-h63a0="${esc(JSON.stringify(i))}"></td>
+      <td><input type="number" value="${e.durationMin??""}" data-onchange="h64" data-h64a0="${esc(JSON.stringify(i))}" style="width:70px"></td>
+      <td class="days">${days}</td>
+      <td><select data-onchange="h65" data-h65a0="${esc(JSON.stringify(i))}">${sounds}</select></td>
+      <td><input type="number" value="${Math.round((e.volume??1)*100)}" data-onchange="h66" data-h66a0="${esc(JSON.stringify(i))}" style="width:60px"> %</td>
+      <td><button class="ghost sm danger" data-onclick="h67" data-h67a0="${esc(JSON.stringify(i))}">✕</button></td></tr>`;
+  }).join("") || '<tr><td colspan="7" class="muted">لا أحداث — أضف حدثًا</td></tr>';
+}
+function ev(i,k,v){ cfgScheds()[curSched].events[i][k]=v; }
+function setTime(i,v){ const [h,m]=v.split(":").map(Number); cfgScheds()[curSched].events[i].startMinuteOfDay=h*60+m; renderEvents(); }
+function toggleDay(i,bit,on){ const e=cfgScheds()[curSched].events[i]; e.daysOfWeek = on ? (e.daysOfWeek|(1<<bit)) : (e.daysOfWeek&~(1<<bit)); }
+function delEvent(i){ cfgScheds()[curSched].events.splice(i,1); renderEvents(); }
+
+async function publishConfig(silent) {
+  cfg.sections.forEach(sc=>{ if(sc.schedules.length && !sc.schedules.some(s=>s.isActive)) sc.schedules[0].isActive=true; });
+  const { error } = await db.from("school_configs")
+    .update({ payload:cfg, version:cfgVersion+1, updated_at:new Date().toISOString() })
+    .eq("school_id", cur.id);
+  if (error) return show("msg","فشل النشر: "+error.message, true);
+  cfgVersion++; audit("schedule.publish", cur.id, `${esc(cur.name)} — الإصدار ${cfgVersion}`);
+  if(!silent) show("msg",`✓ نُشر (الإصدار ${cfgVersion}) — سيصل التابلت خلال دقائق`);
+}
+
+// ── Remote control ──
+function annTargetVal(){ return document.getElementById("annTarget")?.value || null; }
+function annTargetName(){ const el=document.getElementById("annTarget"); return el && el.value ? el.options[el.selectedIndex].text : "كل المدرسة"; }
+async function remoteAnnounce() {
+  const text = document.getElementById("annText").value.trim();
+  if (!text) return show("msg","اكتب نص النداء",true);
+  const target = annTargetVal();
+  const { error } = await db.from("commands").insert({ school_id:cur.id, type:"announce", payload:{text,delay:0}, section_id:target });
+  if (error) return show("msg","فشل: "+error.message,true);
+  wakeTablets(cur.id);
+  audit("command.announce", cur.id, `${esc(cur.name)} → ${annTargetName()}: "${text.slice(0,40)}"`);
+  document.getElementById("annText").value=""; await refreshCmds(); show("msg","✓ أُرسل النداء إلى "+annTargetName());
+}
+// Nudge the school's tablets to sync immediately (instant remote command).
+function wakeTablets(sid) {
+  try {
+    const ch = db.channel("school:" + sid);
+    ch.subscribe(s => {
+      if (s === "SUBSCRIBED") {
+        ch.send({ type: "broadcast", event: "wake", payload: {} });
+        setTimeout(() => db.removeChannel(ch), 1500);
+      }
+    });
+  } catch (_) { /* realtime optional; the 25s poll still delivers */ }
+}
+async function remoteBell() {
+  const target = annTargetVal();
+  const { error } = await db.from("commands").insert({ school_id:cur.id, type:"bell", payload:{}, section_id:target });
+  if (error) return show("msg","فشل: "+error.message,true);
+  wakeTablets(cur.id);
+  audit("command.bell", cur.id, `${esc(cur.name)} → ${annTargetName()}`);
+  await refreshCmds(); show("msg","✓ أُرسل أمر الجرس إلى "+annTargetName());
+}
+async function refreshCmds() {
+  const { data } = await db.from("commands").select("id,type,payload,created_at,delivered_at").eq("school_id",cur.id).order("id",{ascending:false}).limit(10);
+  document.getElementById("detail").dataset.cmds = JSON.stringify(data||[]); renderDetail();
+}
+
+// ── Invoices (detail) ──
+async function createInvoiceFor() {
+  const amount = +document.getElementById("dAmount").value; if(!amount)return;
+  const months = +document.getElementById("dMonths").value;
+  const { error } = await db.from("invoices").insert({ school_id:cur.id, amount, period_months:months });
+  if (error) return show("msg","فشل: "+error.message,true);
+  await loadAll(); renderDetail(); show("msg","✓ أُنشئت الفاتورة");
+}
+async function payInvoice(id){ const {data,error}=await db.rpc("mark_invoice_paid",{p_invoice:id,p_ref:"manual"});
+  if(error) return show("msg","فشل: "+error.message,true);
+  const inv=invoices.find(i=>i.id===id);
+  audit("invoice.paid", inv?.school_id, `فاتورة #${id} — الاشتراك حتى ${data}`);
+  await loadAll(); if(cur){cur=schools.find(s=>s.id===cur.id);renderDetail();} else {loadInvoices();}
+  show("msg","✓ حُصّلت — الاشتراك مُدّد حتى "+data); }
+async function cancelInvoice(id){ await db.from("invoices").update({status:"cancelled"}).eq("id",id);
+  await loadAll(); cur?renderDetail():loadInvoices(); }
+
+// ── Global invoices tab ──
+function loadInvoices() {
+  document.getElementById("invoicesBody").innerHTML = invoices.map(inv=>{
+    const s = schools.find(x=>x.id===inv.school_id);
+    const sp = inv.status==="paid"?'<span class="pill g">مدفوعة</span>':inv.status==="cancelled"?'<span class="muted">ملغاة</span>':'<span class="pill a">معلّقة</span>';
+    const act = inv.status==="pending"?`<button class="ghost sm" data-onclick="h41" data-h41a0="${esc(JSON.stringify(inv.id))}">✓ تحصيل</button> <button class="ghost sm danger" data-onclick="h42" data-h42a0="${esc(JSON.stringify(inv.id))}">إلغاء</button>`:"";
+    return `<tr><td>${inv.id}</td><td>${esc(s?.name||"?")}</td><td class="mono" dir="ltr">${inv.amount} ${inv.currency}</td><td>${inv.period_months} شهر</td><td>${sp}</td><td class="mono" dir="ltr">${fmt(inv.created_at)}</td><td>${act}</td></tr>`;
+  }).join("")||'<tr><td colspan="7" class="muted">لا فواتير</td></tr>';
+}
+async function createInvoice() {
+  const amount=+document.getElementById("invAmount").value; if(!amount)return;
+  const { error } = await db.from("invoices").insert({ school_id:document.getElementById("invSchool").value, amount, period_months:+document.getElementById("invMonths").value });
+  if(error) return show("msg","فشل: "+error.message,true);
+  await loadAll(); loadInvoices(); show("msg","✓ أُنشئت الفاتورة");
+}
+
+// ── Devices tab ──
+let deviceFilter = "all";
+const DEVICE_FILTERS = { all:"الكل", online:"متصلة", offline:"منقطعة" };
+function setDeviceFilter(k){ deviceFilter=k; loadDevices(); }
+function loadDevices() {
+  document.getElementById("deviceChips").innerHTML = Object.entries(DEVICE_FILTERS).map(([k,v])=>{
+    const n = k==="all" ? devices.length : k==="online" ? devices.filter(isOnline).length : devices.filter(d=>!isOnline(d)).length;
+    return `<button class="chip ${deviceFilter===k?"on":""}" data-onclick="h68" data-h68a0="${esc(k)}">${v} <span class="mono">${n}</span></button>`;
+  }).join("");
+  const rows = devices.slice()
+    .filter(d=> deviceFilter==="all" || (deviceFilter==="online"?isOnline(d):!isOnline(d)))
+    .sort((a,b)=>new Date(b.last_seen_at||0)-new Date(a.last_seen_at||0));
+  document.getElementById("devicesBody").innerHTML = rows.map(d=>{
+    const s = schools.find(x=>x.id===d.school_id);
+    return `<tr><td>${esc(s?.name||"?")}</td>
+      <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${isOnline(d)?"var(--green)":"#C9CFCB"};margin-inline-end:6px"></span>${esc(d.name)}</td>
+      <td class="mono" dir="ltr">${esc(d.app_version||"—")}</td>
+      <td class="mono ${isOnline(d)?"ok-txt":"bad-txt"}" dir="ltr">${fmt(d.last_seen_at)}</td>
+      <td><button class="ghost sm" data-onclick="h69" data-h69a0="${esc(d.id)}">تسمية</button>
+          <button class="ghost sm danger" data-onclick="h38" data-h38a0="${esc(d.id)}">فصل</button></td></tr>`;
+  }).join("")||'<tr><td colspan="5" class="muted">لا أجهزة</td></tr>';
+}
+async function renameDevice(id){
+  const d = devices.find(x=>x.id===id); if(!d) return;
+  const name = prompt("اسم الجهاز (مثال: مبنى أ — الطابق الأول):", d.name||"");
+  if(!name || !name.trim() || name.trim()===d.name) return;
+  const { error } = await db.from("devices").update({ name:name.trim() }).eq("id", id);
+  if(error) return show("msg","فشل: "+error.message, true);
+  audit("device.rename", d.school_id, `${esc(name.trim())}`);
+  await loadAll(); cur?renderDetail():loadDevices(); show("msg","✓ حُدّث اسم الجهاز");
+}
+async function removeDevice(id){ if(!confirm("فصل هذا الجهاز؟ سيحتاج رمز تفعيل جديدًا."))return;
+  const {error}=await db.from("devices").delete().eq("id",id);
+  if(error) return show("msg","فشل: "+error.message,true);
+  await loadAll(); cur?renderDetail():loadDevices(); show("msg","✓ فُصل الجهاز"); }
+
+// ── Tabs ──
+function showTab(name) {
+  currentTab = name;
+  document.getElementById("detail").hidden = true;
+  document.getElementById("app").hidden = false;
+  document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("active",b.dataset.tab===name));
+  ["overview","schools","devices","alerts","invoices","plans","audit","account"].forEach(t=>document.getElementById("tab-"+t).hidden = t!==name);
+  if(name==="overview") renderOverview();
+  if(name==="schools") renderSchools();
+  if(name==="devices") loadDevices();
+  if(name==="alerts") renderAlerts();
+  if(name==="invoices") loadInvoices();
+  if(name==="plans") renderPlans();
+  if(name==="audit") renderAudit();
+  if(name==="account") loadAccount();
+}
+
+let myEmail = "";
+async function loadAccount() {
+  document.getElementById("accEmail").textContent = myEmail || "";
+  const { data } = await db.from("profiles").select("full_name, phone").eq("user_id", actorId).maybeSingle();
+  document.getElementById("accName").value = data?.full_name || "";
+  document.getElementById("accPhone").value = data?.phone || "";
+}
+async function saveProfile() {
+  const full_name = document.getElementById("accName").value.trim();
+  const phone = document.getElementById("accPhone").value.trim();
+  const { error } = await db.from("profiles").upsert({ user_id: actorId, full_name, phone, updated_at: new Date().toISOString() });
+  document.getElementById("accMsg").textContent = error ? "فشل: " + error.message : "✓ حُفظت بياناتك.";
+}
+async function changePassword() {
+  const p1 = document.getElementById("accPw1").value, p2 = document.getElementById("accPw2").value;
+  const msg = document.getElementById("accMsg");
+  if (p1.length < 6) { msg.textContent = "كلمة المرور 6 أحرف على الأقل."; return; }
+  if (p1 !== p2) { msg.textContent = "كلمتا المرور غير متطابقتين."; return; }
+  const { error } = await db.auth.updateUser({ password: p1 });
+  msg.textContent = error ? "فشل: " + error.message : "✓ تم تحديث كلمة المرور.";
+  if (!error) { document.getElementById("accPw1").value = ""; document.getElementById("accPw2").value = ""; }
+}
+
+const AUDIT_LABELS = {
+  "school.create":"إنشاء مدرسة","school.plan":"تغيير الخطة","school.subscription_until":"تعديل الاشتراك",
+  "school.active":"تفعيل/إيقاف","school.name":"تعديل الاسم","schedule.publish":"نشر جدول",
+  "command.announce":"نداء عن بُعد","command.bell":"جرس عن بُعد","account.create":"إنشاء حساب دخول",
+  "invoice.paid":"تحصيل فاتورة","device.rename":"تسمية جهاز",
+};
+let AUDIT_ROWS = [];
+async function renderAudit() {
+  const box = document.getElementById("auditBody");
+  const { data, error } = await db.from("audit_log").select("action,school_id,detail,created_at").order("created_at",{ascending:false}).limit(1000);
+  if (error) {
+    box.innerHTML = `<p class="muted">لتفعيل سجل العمليات طبّق الهجرة <code>0007_audit_log</code> ثم <code>supabase db push</code>.</p>`;
+    document.getElementById("auAction").innerHTML = `<option value="">كل العمليات</option>`;
+    return;
+  }
+  AUDIT_ROWS = data || [];
+  const acts = [...new Set(AUDIT_ROWS.map(r=>r.action))];
+  const sel = document.getElementById("auAction");
+  const keep = sel.value;
+  sel.innerHTML = `<option value="">كل العمليات</option>` + acts.map(a=>`<option value="${esc(a)}">${esc(AUDIT_LABELS[a]||a)}</option>`).join("");
+  sel.value = keep;
+  drawAudit();
+}
+function auditFiltered() {
+  const act = document.getElementById("auAction").value;
+  const q = (document.getElementById("auSearch").value||"").trim();
+  return AUDIT_ROWS.filter(r=> (!act||r.action===act) &&
+    (!q || (r.detail||"").includes(q) || (AUDIT_LABELS[r.action]||r.action).includes(q)));
+}
+function drawAudit() {
+  const rows = auditFiltered();
+  document.getElementById("auditBody").innerHTML =
+    `<table><thead><tr><th>العملية</th><th>المدرسة</th><th>التفاصيل</th><th>الوقت</th></tr></thead><tbody>${
+      rows.map(r=>{ const s=schools.find(x=>x.id===r.school_id);
+        return `<tr>
+          <td><span class="pill" style="background:var(--navy-container);color:var(--navy-d)">${esc(AUDIT_LABELS[r.action]||r.action)}</span></td>
+          <td>${esc(s?.name||"—")}</td>
+          <td>${esc(r.detail||"—")}</td>
+          <td class="mono muted" dir="ltr">${fmt(r.created_at)}</td></tr>`; }).join("")
+      || '<tr><td colspan="4" class="muted">لا عمليات مطابقة</td></tr>'}</tbody></table>
+     <p class="muted" style="margin-top:10px">${rows.length} من ${AUDIT_ROWS.length} عملية</p>`;
+}
+function exportAuditCSV() {
+  const rows = auditFiltered();
+  if (!rows.length) return show("msg","لا عمليات للتصدير", true);
+  const head = ["العملية","الكود","المدرسة","التفاصيل","الوقت"];
+  const body = rows.map(r=>{ const s=schools.find(x=>x.id===r.school_id);
+    return [AUDIT_LABELS[r.action]||r.action, r.action, s?.name||"", r.detail||"", new Date(r.created_at).toLocaleString("ar-SA")]; });
+  downloadCSV(`audit-log-${new Date().toISOString().slice(0,10)}.csv`, head, body);
+}
+// Generic CSV download with UTF-8 BOM so Excel reads Arabic correctly.
+function downloadCSV(filename, head, rows) {
+  const q = v => `"${String(v??"").replace(/"/g,'""')}"`;
+  const csv = "﻿" + [head, ...rows].map(r=>r.map(q).join(",")).join("\r\n");
+  const url = URL.createObjectURL(new Blob([csv], {type:"text/csv;charset=utf-8"}));
+  const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+
+// ─── Plans management ─────────────────────────────────────────────────────
+// ── Alerts / notifications ──
+let NOTIFS = null;   // null = table missing (migration 0008 not applied)
+async function loadNotifCount() {
+  const { count, error } = await db.from("notifications").select("id",{count:"exact",head:true}).eq("status","new");
+  const badge = document.getElementById("alertsBadge");
+  if (error || !count) { badge.hidden = true; return; }
+  badge.hidden = false; badge.textContent = count;
+}
+async function renderAlerts() {
+  const box = document.getElementById("alertsBody");
+  const { data, error } = await db.from("notifications").select("id,kind,school_id,title,body,severity,status,created_at").order("created_at",{ascending:false}).limit(300);
+  if (error) {
+    NOTIFS = null;
+    box.innerHTML = `<p class="muted">لتفعيل التنبيهات طبّق الهجرة <code>0008_alerts_onboarding</code> وانشر دالة <code>alerts</code>، ثم اضغط "توليد الآن".<br>
+      حتى ذلك الحين تظهر التنبيهات العاجلة في <a data-onclick="h2" style="color:var(--navy-d);cursor:pointer">نظرة عامة</a>.</p>`;
+    return;
+  }
+  NOTIFS = data || [];
+  drawAlerts();
+}
+function drawAlerts() {
+  if (NOTIFS === null) return;
+  const mode = document.getElementById("alFilter").value;
+  const rows = NOTIFS.filter(n=> mode==="all" || n.status==="new");
+  const box = document.getElementById("alertsBody");
+  box.innerHTML = rows.length ? rows.map(n=>`
+    <div class="noti ${esc(n.severity)} ${n.status==="read"?"read":""}">
+      <span class="dot"></span>
+      <div style="flex:1">
+        <div><b>${esc(n.title)}</b></div>
+        <div class="muted">${esc(n.body||"")}</div>
+        <div class="mono muted" dir="ltr" style="font-size:12px;margin-top:2px">${fmt(n.created_at)}</div>
+      </div>
+      ${n.school_id?`<button class="ghost sm" data-onclick="h20" data-h20a0="${esc(n.school_id)}">فتح المدرسة</button>`:""}
+      ${n.status==="new"?`<button class="ghost sm" data-onclick="h70" data-h70a0="${esc(JSON.stringify(n.id))}">تمّت</button>`:""}
+    </div>`).join("")
+    : '<p class="muted">لا تنبيهات ✓</p>';
+}
+async function generateAlerts() {
+  show("msg","… جارٍ فحص الاشتراكات والأجهزة");
+  const { data, error } = await db.functions.invoke("alerts", { body:{} });
+  const e = error || data?.error;
+  if (e) return show("msg","تعذّر التوليد — تأكد من نشر دالة alerts. "+(data?.error||e.message||""), true);
+  await renderAlerts(); await loadNotifCount();
+  show("msg",`✓ اكتمل الفحص — ${data.created||0} تنبيه جديد`);
+}
+async function markNotif(id) {
+  const { error } = await db.from("notifications").update({ status:"read" }).eq("id", id);
+  if (error) return show("msg","فشل: "+error.message, true);
+  const n = NOTIFS.find(x=>x.id===id); if (n) n.status="read";
+  drawAlerts(); loadNotifCount();
+}
+
+let editingPlan = null;   // key being edited, "" for new, null = form hidden
+function renderPlans() {
+  const box = document.getElementById("plansBody");
+  if (PLANS === null) {
+    box.innerHTML = `<div class="card"><h2>الباقات</h2>
+      <p class="muted">لتفعيل إدارة الباقات طبّق الهجرة <code>0006_plans</code> ثم <code>supabase db push</code>.
+      حتى ذلك الحين تُستخدم الباقتان الافتراضيتان (أساسي/كامل).</p></div>`;
+    return;
+  }
+  const form = editingPlan !== null ? planForm() : "";
+  const rows = PLANS.map(p=>`<tr>
+      <td><b>${esc(p.name_ar)}</b> <code>${esc(p.key)}</code></td>
+      <td class="mono" dir="ltr">${Number(p.price).toLocaleString("ar")} ${esc(p.currency)}</td>
+      <td>${p.billing_months} شهر</td>
+      <td>${(p.features||[]).length} ميزة</td>
+      <td>${p.active?'<span class="pill g">مفعّلة</span>':'<span class="pill r">موقوفة</span>'}</td>
+      <td><button class="ghost sm" data-onclick="h71" data-h71a0="${esc(p.key)}">تعديل</button>
+          <button class="ghost sm danger" data-onclick="h72" data-h72a0="${esc(p.key)}">حذف</button></td>
+    </tr>`).join("") || '<tr><td colspan="6" class="muted">لا باقات</td></tr>';
+  box.innerHTML = `
+    <div class="card">
+      <div class="row" style="margin-bottom:14px"><h2 style="flex:1;margin:0">الباقات</h2>
+        <button class="primary" data-onclick="h73">+ باقة جديدة</button></div>
+      <table><thead><tr><th>الباقة</th><th>السعر</th><th>المدة</th><th>المزايا</th><th>الحالة</th><th></th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    </div>
+    ${form}`;
+}
+function planForm() {
+  const p = editingPlan ? PLANS.find(x=>x.key===editingPlan) : null;
+  const isNew = !p;
+  return `<div class="card">
+    <h3>${isNew?"باقة جديدة":"تعديل: "+esc(p.name_ar)}</h3>
+    <div class="row" style="margin-bottom:10px">
+      <label class="muted">المفتاح</label><input id="pKey" value="${p?esc(p.key):""}" ${isNew?"":"disabled"} placeholder="مثال: premium" dir="ltr" style="width:130px">
+      <label class="muted">الاسم</label><input id="pName" value="${p?esc(p.name_ar):""}" placeholder="اسم الباقة" style="width:160px">
+      <label class="muted">السعر</label><input id="pPrice" type="number" value="${p?p.price:""}" style="width:100px">
+      <label class="muted">المدة (شهر)</label><input id="pMonths" type="number" value="${p?p.billing_months:12}" style="width:80px">
+      <label><input id="pActive" type="checkbox" ${!p||p.active?"checked":""}> مفعّلة</label>
+    </div>
+    <label class="muted">المزايا (سطر لكل ميزة)</label>
+    <textarea id="pFeatures" rows="5" style="width:100%;margin-top:6px">${p?(p.features||[]).map(esc).join("\n"):""}</textarea>
+    <div class="row" style="margin-top:12px">
+      <button class="primary" data-onclick="h74">حفظ</button>
+      <button class="ghost" data-onclick="h75">إلغاء</button>
+    </div></div>`;
+}
+function editPlan(key){ editingPlan = key; renderPlans(); }
+async function savePlan() {
+  const key = document.getElementById("pKey").value.trim();
+  const name = document.getElementById("pName").value.trim();
+  if (!key || !name) return show("msg","المفتاح والاسم مطلوبان", true);
+  const rec = {
+    key, name_ar:name,
+    price: +document.getElementById("pPrice").value || 0,
+    billing_months: +document.getElementById("pMonths").value || 12,
+    active: document.getElementById("pActive").checked,
+    features: document.getElementById("pFeatures").value.split("\n").map(s=>s.trim()).filter(Boolean),
+    sort_order: (editingPlan && PLANS.find(p=>p.key===editingPlan)?.sort_order) || (PLANS.length+1),
+  };
+  const { error } = await db.from("plans").upsert(rec);
+  if (error) return show("msg","فشل: "+error.message, true);
+  editingPlan = null; await loadAll(); renderPlans(); show("msg","✓ حُفظت الباقة");
+}
+async function deletePlan(key) {
+  if (schools.some(s=>s.plan===key)) return show("msg","لا يمكن حذف باقة مستخدمة من مدارس", true);
+  if (!confirm(`حذف باقة "${planName(key)}"؟`)) return;
+  const { error } = await db.from("plans").delete().eq("key", key);
+  if (error) return show("msg","فشل: "+error.message, true);
+  await loadAll(); renderPlans(); show("msg","✓ حُذفت الباقة");
+}
+function show(id,text,isError){ const el=document.getElementById(id); el.textContent=text; el.className="msg "+(isError?"err":"ok"); setTimeout(()=>{el.className="msg";},6000); }
+function fmt(ts){ return ts?new Date(ts).toLocaleString("ar-SA",{dateStyle:"short",timeStyle:"short"}):"—"; }
+function esc(s) { return String(s ?? "").replace(/[&<>"'`]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "`": "&#96;" }[c])); }
+
+init();
+
+// ─── Delegated event handlers (replaces inline on*="" attributes for CSP) ───
+function _hv(v) { if (v === undefined) return undefined; try { return JSON.parse(v); } catch (_) { return v; } }
+const _H = {
+  h1(event) { login() },
+  h2(event) { showTab('overview') },
+  h3(event) { showTab('schools') },
+  h4(event) { showTab('devices') },
+  h5(event) { showTab('alerts') },
+  h6(event) { showTab('invoices') },
+  h7(event) { showTab('plans') },
+  h8(event) { showTab('audit') },
+  h9(event) { showTab('account') },
+  h10(event) { renderSchools() },
+  h11(event) { openNewSchool() },
+  h12(event) { drawAlerts() },
+  h13(event) { generateAlerts() },
+  h14(event) { createInvoice() },
+  h15(event) { drawAudit() },
+  h16(event) { drawAudit() },
+  h17(event) { exportAuditCSV() },
+  h18(event) { saveProfile() },
+  h19(event) { changePassword() },
+  h20(event) { openSchool(this.dataset.h20a0) },
+  h21(event) { setFilter(this.dataset.h21a0) },
+  h22(event) { resetSchoolUser(this.dataset.h22a0) },
+  h23(event) { removeSchoolUser(this.dataset.h23a0,this.dataset.h23a1) },
+  h24(event) { backToList() },
+  h25(event) { renameSchool() },
+  h26(event) { toggleActive() },
+  h27(event) { deleteSchool() },
+  h28(event) { patchSchool({plan:this.value}) },
+  h29(event) { patchSchool({subscription_until:this.value||null}) },
+  h30(event) { copyCode(this.dataset.h30a0) },
+  h31(event) { newCode() },
+  h32(event) { publishConfig() },
+  h33(event) { addSchedule() },
+  h34(event) { addEvent() },
+  h35(event) { remoteAnnounce() },
+  h36(event) { remoteBell() },
+  h37(event) { assignDevice(this.dataset.h37a0, this.value) },
+  h38(event) { removeDevice(this.dataset.h38a0) },
+  h39(event) { createSchoolUser() },
+  h40(event) { createInvoiceFor() },
+  h41(event) { payInvoice(_hv(this.dataset.h41a0)) },
+  h42(event) { cancelInvoice(_hv(this.dataset.h42a0)) },
+  h43(event) { pickSection(_hv(this.dataset.h43a0)) },
+  h44(event) { addSection() },
+  h45(event) { cfgSec().defaultSoundKey=this.value },
+  h46(event) { renameSection() },
+  h47(event) { deleteSection() },
+  h48(event) { pickSched(_hv(this.dataset.h48a0)) },
+  h49(event) { togglePrayer(this.checked) },
+  h50(event) { togglePrayerBit(_hv(this.dataset.h50a0),this.checked) },
+  h51(event) { setPrayer('enabled',this.checked) },
+  h52(event) { pickCity(this.value) },
+  h53(event) { setPrayer('latitude',+this.value) },
+  h54(event) { setPrayer('longitude',+this.value) },
+  h55(event) { setPrayer('method',this.value) },
+  h56(event) { setPrayer('adhanSoundKey',this.value) },
+  h57(event) { setPrayer('silenceAfterMin',Math.max(0,+this.value||0)) },
+  h58(event) { cfgScheds()[_hv(this.dataset.h58a0)].name=this.value;renderSchedPills() },
+  h59(event) { setActiveSched(_hv(this.dataset.h59a0),this.checked) },
+  h60(event) { delSchedule(_hv(this.dataset.h60a0)) },
+  h61(event) { toggleDay(_hv(this.dataset.h61a0),_hv(this.dataset.h61a1),this.checked) },
+  h62(event) { setTime(_hv(this.dataset.h62a0),this.value) },
+  h63(event) { ev(_hv(this.dataset.h63a0),'name',this.value) },
+  h64(event) { ev(_hv(this.dataset.h64a0),'durationMin',this.value===''?null:+this.value) },
+  h65(event) { ev(_hv(this.dataset.h65a0),'soundKey',this.value) },
+  h66(event) { ev(_hv(this.dataset.h66a0),'volume',Math.max(0,Math.min(100,+this.value||0))/100) },
+  h67(event) { delEvent(_hv(this.dataset.h67a0)) },
+  h68(event) { setDeviceFilter(this.dataset.h68a0) },
+  h69(event) { renameDevice(this.dataset.h69a0) },
+  h70(event) { markNotif(_hv(this.dataset.h70a0)) },
+  h71(event) { editPlan(this.dataset.h71a0) },
+  h72(event) { deletePlan(this.dataset.h72a0) },
+  h73(event) { editPlan('') },
+  h74(event) { savePlan() },
+  h75(event) { editingPlan=null;renderPlans() }
+};
+["click", "change", "input"].forEach(type => document.addEventListener(type, ev => {
+  for (let el = ev.target; el && el !== document; el = el.parentElement) {
+    const name = el.getAttribute && el.getAttribute("data-on" + type);
+    if (!name || !_H[name]) continue;
+    if (_H[name].call(el, ev) === false) ev.preventDefault();
+    if (ev.cancelBubble) break;
+  }
+}));

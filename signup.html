@@ -2,6 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://tcdknoalnynnbuvlozwy.supabase.co; media-src 'self' blob: https://tcdknoalnynnbuvlozwy.supabase.co; connect-src 'self' https://tcdknoalnynnbuvlozwy.supabase.co wss://tcdknoalnynnbuvlozwy.supabase.co https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ميقات — تجربة مجانية</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxMjggMTI4Jz48cmVjdCB3aWR0aD0nMTI4JyBoZWlnaHQ9JzEyOCcgcng9JzI4JyBmaWxsPScjMEI2QjRBJy8+PGcgdHJhbnNmb3JtPSd0cmFuc2xhdGUoMTkuOCAyMC40KSBzY2FsZSgwLjY2KSc+PHBhdGggZmlsbD0nI2ZmZicgZD0nTTU4LjUsMjMuNSBhNS41LDUuNSAwIDEsMCAxMSwwIGE1LjUsNS41IDAgMSwwIC0xMSwwIFogTTYwLDI2IGg4IHY3IGgtOCBaIE02NCwzMSBDODMsMzEgOTIsNDYuNSA5Miw2NSBMOTIsNzQgQzkyLDgyIDk1LDg3LjIgMTAwLDkxIEwyOCw5MSBDMzMsODcuMiAzNiw4MiAzNiw3NCBMMzYsNjUgQzM2LDQ2LjUgNDUsMzEgNjQsMzEgWiBNMzEuMjUsODggaDY1LjUgYTUuMjUsNS4yNSAwIDAsMSA1LjI1LDUuMjUgYTUuMjUsNS4yNSAwIDAsMSAtNS4yNSw1LjI1IGgtNjUuNSBhNS4yNSw1LjI1IDAgMCwxIC01LjI1LC01LjI1IGE1LjI1LDUuMjUgMCAwLDEgNS4yNSwtNS4yNSBaIE01Ny40LDEwNy41IGE2LjYsNi42IDAgMSwwIDEzLjIsMCBhNi42LDYuNiAwIDEsMCAtMTMuMiwwIFonLz48Y2lyY2xlIGN4PSc5OScgY3k9JzMzJyByPSc5JyBmaWxsPScjNUVFMEFEJy8+PC9nPjwvc3ZnPg==">
@@ -59,10 +60,11 @@
     <label>رقم الجوال <span class="opt">(اختياري)</span></label>
     <input id="phone" type="tel" dir="ltr" placeholder="05xxxxxxxx" autocomplete="tel">
     <label>كلمة مرور لوحة المدرسة <span class="opt">(اختياري — لإنشاء حساب دخول فورًا)</span></label>
-    <input id="password" type="password" dir="ltr" placeholder="6 أحرف على الأقل" autocomplete="new-password">
+    <input id="password" type="password" dir="ltr" placeholder="8 أحرف على الأقل" autocomplete="new-password">
     <input class="hp" id="website" tabindex="-1" autocomplete="off" placeholder="Website">
+    <div id="captcha" style="margin:10px 0"></div>
 
-    <button id="submit" onclick="submitForm()">ابدأ التجربة المجانية</button>
+    <button id="submit" data-onclick="h1">ابدأ التجربة المجانية</button>
     <div class="msg" id="msg"></div>
     <p class="muted" style="text-align:center;margin-top:14px">لديك حساب؟ <a class="link" href="./index.html">تسجيل الدخول</a></p>
   </div>
@@ -84,35 +86,7 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
-<script>
-const SUPABASE_URL = "https://tcdknoalnynnbuvlozwy.supabase.co";
-const SUPABASE_KEY = "sb_publishable_D0YQfRkraujKgNEVpSNKhw_YMvm2oB7";
-const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-async function submitForm() {
-  const name = val("name"), email = val("email"), phone = val("phone"), password = val("password");
-  if (name.length < 2) return err("أدخل اسم المدرسة");
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return err("أدخل بريدًا إلكترونيًا صحيحًا");
-  if (password && password.length < 6) return err("كلمة المرور 6 أحرف على الأقل");
-  const btn = document.getElementById("submit");
-  btn.disabled = true; btn.textContent = "… جارٍ الإنشاء";
-  const { data, error } = await db.functions.invoke("signup", {
-    body: { name, contactEmail: email, contactPhone: phone, password, website: val("website") },
-  });
-  const e = error || data?.error;
-  if (e) { btn.disabled = false; btn.textContent = "ابدأ التجربة المجانية"; return err(typeof e === "string" ? e : (data?.error || e.message || "تعذّر الإنشاء")); }
-  document.getElementById("formCard").style.display = "none";
-  document.getElementById("doneCard").style.display = "block";
-  document.getElementById("doneCode").textContent = data.activationCode;
-  document.getElementById("trialLine").textContent = "فترتك التجريبية سارية حتى " + data.trialUntil + ".";
-  document.getElementById("acctLine").innerHTML = data.account
-    ? `4. ادخل <a class="link" href="./index.html">لوحة المدرسة</a> ببريدك وكلمة المرور التي اخترتها.`
-    : `4. لإنشاء حساب لوحة المدرسة تواصل مع مزوّد الخدمة.`;
-  window.scrollTo(0, 0);
-}
-function val(id) { return document.getElementById(id).value.trim(); }
-function err(t) { const m = document.getElementById("msg"); m.textContent = t; m.className = "msg err"; }
-</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js" integrity="sha384-2zrRDgDHSYB/GN3nFW3fsZXoxEhKIr3N2h63Tc6DEOB9JJdFIu8xMJT2Cph/gBil" crossorigin="anonymous"></script>
+<script src="signup.js"></script>
 </body>
 </html>
