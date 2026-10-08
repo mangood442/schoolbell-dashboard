@@ -1,4 +1,4 @@
-const SUPABASE_URL = "https://tcdknoalnynnbuvlozwy.supabase.co";
+const SUPABASE_URL = "https://meeqat-api.tripleodoo.com";
 const SUPABASE_KEY = "sb_publishable_D0YQfRkraujKgNEVpSNKhw_YMvm2oB7";
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
