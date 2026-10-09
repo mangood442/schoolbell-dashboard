@@ -222,7 +222,7 @@ function renderSchoolUsers() {
 async function createSchoolUser() {
   const email = document.getElementById("suEmail").value.trim();
   const pw = document.getElementById("suPass").value;
-  if (!email || pw.length < 6) return show("msg","أدخل بريدًا وكلمة مرور (6 أحرف على الأقل)", true);
+  if (!email || pw.length < 10) return show("msg","أدخل بريدًا وكلمة مرور (10 أحرف على الأقل)", true);
   show("msg","… جارٍ الإنشاء");
   const { data, error } = await db.functions.invoke("admin-users", { body:{ action:"create", schoolId:cur.id, email, password:pw } });
   const err = error || data?.error;
@@ -232,8 +232,8 @@ async function createSchoolUser() {
   await loadSchoolUsers(); show("msg","✓ أُنشئ الحساب — سلّم بيانات الدخول للمدرسة");
 }
 async function resetSchoolUser(userId) {
-  const pw = prompt("كلمة المرور الجديدة (6 أحرف على الأقل):");
-  if (!pw || pw.length < 6) return;
+  const pw = prompt("كلمة المرور الجديدة (10 أحرف على الأقل):");
+  if (!pw || pw.length < 10) return alert("10 أحرف على الأقل");
   const { data, error } = await db.functions.invoke("admin-users", { body:{ action:"reset", userId, password:pw } });
   const err = error || data?.error;
   show("msg", err ? "فشل: "+(data?.error||err.message||err) : "✓ غُيّرت كلمة المرور", !!err);
