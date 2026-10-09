@@ -4,7 +4,7 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Cloudflare Turnstile (optional). Put the public SITE key here once the
 // TURNSTILE_SECRET is set on the `signup` function; leave "" to disable.
-const TURNSTILE_SITE_KEY = "";
+const TURNSTILE_SITE_KEY = "0x4AAAAAAFSje9nDyIOppFHK";
 let turnstileToken = "";
 if (TURNSTILE_SITE_KEY) {
   window.onTurnstileLoad = () => window.turnstile.render("#captcha", {
@@ -32,14 +32,47 @@ async function submitForm() {
   if (e && TURNSTILE_SITE_KEY && window.turnstile) { window.turnstile.reset("#captcha"); turnstileToken = ""; }
   if (e) { btn.disabled = false; btn.textContent = "ابدأ التجربة المجانية"; return err(typeof e === "string" ? e : (data?.error || e.message || "تعذّر الإنشاء")); }
   document.getElementById("formCard").style.display = "none";
+  if (data.pending) {   // SEC-20261009: e-mail verification step
+    showCheckMail(email);
+    return;
+  }
+  showDone(data);
+}
+
+function showCheckMail(email) {
+  const c = document.getElementById("doneCard");
+  c.style.display = "block";
+  c.innerHTML = `<div class="logo" style="margin-bottom:8px">✉️</div>
+    <h1 style="font-size:22px">بقيت خطوة واحدة</h1>
+    <p class="sub">أرسلنا رابط التأكيد إلى <b dir="ltr">${esc(email)}</b>.<br>افتح الرابط خلال 48 ساعة لتفعيل التجربة المجانية وعرض رمز التفعيل.</p>
+    <p class="muted">لم تصلك الرسالة؟ تأكد من مجلد الرسائل غير المرغوبة (Spam).</p>`;
+  window.scrollTo(0, 0);
+}
+
+async function verifyFromLink(token) {
+  document.getElementById("formCard").style.display = "none";
+  const c = document.getElementById("doneCard"); c.style.display = "block";
+  const keep = c.innerHTML; c.innerHTML = '<p class="sub">… جارٍ تأكيد بريدك</p>';
+  const { data, error } = await db.functions.invoke("signup", { body: { verify: token } });
+  const e = error || data?.error;
+  if (e) { c.innerHTML = `<h1 style="font-size:20px">تعذّر التأكيد</h1><p class="sub">${esc(typeof e === "string" ? e : (data?.error || "الرابط غير صالح أو منتهي"))}</p><p><a class="link" href="./signup.html">سجّل من جديد</a></p>`; return; }
+  c.innerHTML = keep;
+  history.replaceState(null, "", "./signup.html");
+  showDone(data);
+}
+
+function showDone(data) {
   document.getElementById("doneCard").style.display = "block";
-  document.getElementById("doneCode").textContent = data.activationCode;
+  document.getElementById("doneCode").textContent = data.activationCode || "—";
   document.getElementById("trialLine").textContent = "فترتك التجريبية سارية حتى " + data.trialUntil + ".";
   document.getElementById("acctLine").innerHTML = data.account
     ? `4. ادخل <a class="link" href="./index.html">لوحة المدرسة</a> ببريدك وكلمة المرور التي اخترتها.`
     : `4. لإنشاء حساب لوحة المدرسة تواصل مع مزوّد الخدمة.`;
   window.scrollTo(0, 0);
 }
+const _verify = new URLSearchParams(location.search).get("verify");
+if (_verify) verifyFromLink(_verify);
+
 function val(id) { return document.getElementById(id).value.trim(); }
 function err(t) { const m = document.getElementById("msg"); m.textContent = t; m.className = "msg err"; }
 
