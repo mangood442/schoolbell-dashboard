@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://meeqat-api.tripleodoo.com; media-src 'self' blob: https://meeqat-api.tripleodoo.com; connect-src 'self' https://meeqat-api.tripleodoo.com wss://meeqat-api.tripleodoo.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://meeqat-api.tripleodoo.com; media-src 'self' blob: https://meeqat-api.tripleodoo.com; connect-src 'self' https://meeqat-api.tripleodoo.com wss://meeqat-api.tripleodoo.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ميقات — لوحة المدرسة</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxMjggMTI4Jz48cmVjdCB3aWR0aD0nMTI4JyBoZWlnaHQ9JzEyOCcgcng9JzI4JyBmaWxsPScjMEI2QjRBJy8+PGcgdHJhbnNmb3JtPSd0cmFuc2xhdGUoMTkuOCAyMC40KSBzY2FsZSgwLjY2KSc+PHBhdGggZmlsbD0nI2ZmZicgZD0nTTU4LjUsMjMuNSBhNS41LDUuNSAwIDEsMCAxMSwwIGE1LjUsNS41IDAgMSwwIC0xMSwwIFogTTYwLDI2IGg4IHY3IGgtOCBaIE02NCwzMSBDODMsMzEgOTIsNDYuNSA5Miw2NSBMOTIsNzQgQzkyLDgyIDk1LDg3LjIgMTAwLDkxIEwyOCw5MSBDMzMsODcuMiAzNiw4MiAzNiw3NCBMMzYsNjUgQzM2LDQ2LjUgNDUsMzEgNjQsMzEgWiBNMzEuMjUsODggaDY1LjUgYTUuMjUsNS4yNSAwIDAsMSA1LjI1LDUuMjUgYTUuMjUsNS4yNSAwIDAsMSAtNS4yNSw1LjI1IGgtNjUuNSBhNS4yNSw1LjI1IDAgMCwxIC01LjI1LC01LjI1IGE1LjI1LDUuMjUgMCAwLDEgNS4yNSwtNS4yNSBaIE01Ny40LDEwNy41IGE2LjYsNi42IDAgMSwwIDEzLjIsMCBhNi42LDYuNiAwIDEsMCAtMTMuMiwwIFonLz48Y2lyY2xlIGN4PSc5OScgY3k9JzMzJyByPSc5JyBmaWxsPScjNUVFMEFEJy8+PC9nPjwvc3ZnPg==">
@@ -68,6 +68,21 @@
   .bar { height: 10px; border-radius: 999px; background: var(--green-container); overflow: hidden; }
   .bar > span { display: block; height: 100%; background: var(--green); }
   @media (max-width: 760px) { .kpis { grid-template-columns: 1fr 1fr; } }
+  /* ميقات – ولي الأمر */
+  h3 { font-size: 15px; font-weight: 600; margin: 18px 0 8px; color: var(--mid); }
+  button.sm, .ghost.sm, .primary.sm { padding: 5px 10px; font-size: 13px; border-radius: 9px; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; background: var(--green-container); border: 1px solid var(--green-border); border-radius: 999px; padding: 3px 10px; margin: 2px; font-size: 13px; }
+  .chip.expired { background: #F4F4F4; border-color: var(--line); color: var(--muted); }
+  .chip-x { border: 0; background: none; color: var(--red); cursor: pointer; font-size: 12px; padding: 0 2px; }
+  tr.inactive td { opacity: .5; }
+  tr.warn td { background: var(--amber-bg); }
+  tr.bad td { background: #FDECEA; }
+  .notice { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin-bottom: 10px; }
+  .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+  .switch input { width: 20px; height: 20px; accent-color: var(--green); }
+  #ntSections, #ntGrades { gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+  textarea { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; font-size: 14px; font-family: inherit; width: 100%; min-height: 110px; }
+  a.gate-link { color: var(--green-dark); font-weight: 600; text-decoration: none; border: 1px solid var(--green-border); border-radius: 12px; padding: 8px 14px; }
 </style>
 </head>
 <body>
@@ -76,6 +91,7 @@
   <span class="logo"><svg viewBox="0 0 128 128" width="66%" height="66%" aria-hidden="true"><g fill="#fff"><circle cx="64" cy="23.5" r="5.5"/><rect x="60" y="26" width="8" height="7" rx="3.2"/><path d="M64 31C83 31 92 46.5 92 65V74C92 82 95 87.2 100 91H28C33 87.2 36 82 36 74V65C36 46.5 45 31 64 31Z"/><rect x="26" y="88" width="76" height="10.5" rx="5.25"/><circle cx="64" cy="107.5" r="6.6"/></g><circle cx="99" cy="33" r="9" fill="#5EE0AD"/></svg></span>
   <h1>ميقات</h1>
   <span class="school" id="schoolName"></span>
+  <a class="gate-link" id="gateLink" href="./gate.html" style="display:none">🚪 شاشة البوابة</a>
   <button class="ghost" id="logoutBtn" style="display:none">خروج</button>
 </header>
 
@@ -101,6 +117,9 @@
       <button data-tab="devices" data-onclick="h6">📱 الأجهزة</button>
       <button data-tab="sounds" data-onclick="h7">🔊 الأصوات</button>
       <button data-tab="smart" data-onclick="h8">🔌 الأجهزة الذكية</button>
+      <button data-tab="students" data-onclick="h54">👨‍👩‍👧 الطلاب وأولياء الأمور</button>
+      <button data-tab="pickup" data-onclick="h55">🚗 إعدادات الاستلام</button>
+      <button data-tab="notices" data-onclick="h56">📣 التعاميم</button>
       <button data-tab="account" data-onclick="h9">👤 حسابي</button>
     </div>
     <div class="msg" id="msg"></div>
@@ -211,6 +230,45 @@
       <div id="sceneList"></div>
     </section>
 
+    <!-- Students & guardians (ميقات – ولي الأمر) -->
+    <section id="tab-students" class="card" style="display:none">
+      <div class="row" style="margin-bottom:6px"><h2 style="flex:1">الطلاب وأولياء الأمور</h2>
+        <input id="stuSearch" placeholder="بحث بالاسم أو الجوال أو رقم الطالب" style="min-width:240px" data-oninput="p1">
+        <button class="ghost" data-onclick="p23">⬆ استيراد من نور (Excel / CSV)</button>
+        <input type="file" id="stuFile" accept=".csv,.xlsx,.xls,text/csv" style="display:none" data-onchange="p2">
+        <button class="ghost" data-onclick="p22">+ طالب</button>
+      </div>
+      <p class="muted" style="margin-top:-4px">الأعمدة المتوقعة: اسم الطالب، الصف، الفصل، جوال وليّ الأمر، واختياريًا: اسم وليّ الأمر، رقم الطالب في نور، القسم. تُوحَّد الأرقام تلقائيًا إلى ‎+9665…‎ ويمكن تصحيح نطق الاسم في عمود «النطق».</p>
+      <div id="importBox" style="display:none"></div>
+      <div id="stuForm" style="display:none"></div>
+      <table><thead><tr><th>الطالب</th><th>النطق</th><th>الصف / الفصل</th><th>القسم</th><th>أولياء الأمور</th><th></th></tr></thead>
+      <tbody id="stuBody"></tbody></table>
+      <p class="muted" id="stuCount"></p>
+    </section>
+
+    <!-- Pickup settings -->
+    <section id="tab-pickup" class="card" style="display:none">
+      <div class="row" style="margin-bottom:6px"><h2 style="flex:1">إعدادات الاستلام</h2>
+        <a class="gate-link" href="./gate.html">🚪 فتح شاشة البوابة</a></div>
+      <div id="pickupBox"></div>
+    </section>
+
+    <!-- Notices -->
+    <section id="tab-notices" class="card" style="display:none">
+      <h2>التعاميم لأولياء الأمور</h2>
+      <div style="display:flex;flex-direction:column;gap:10px;max-width:720px">
+        <input id="ntTitle" placeholder="عنوان التعميم" maxlength="200">
+        <textarea id="ntBody" placeholder="نص التعميم" maxlength="4000"></textarea>
+        <div class="row"><label class="muted">إلى</label>
+          <select id="ntTarget" data-onchange="p21"><option value="all">كل أولياء الأمور</option><option value="sections">أقسام محددة</option><option value="grades">صفوف محددة</option></select>
+          <span style="flex:1"></span><button class="primary" data-onclick="p19">📣 إرسال التعميم</button></div>
+        <div id="ntSections" class="row" style="display:none"></div>
+        <div id="ntGrades" class="row" style="display:none"></div>
+      </div>
+      <h3>آخر التعاميم</h3>
+      <div id="ntList"></div>
+    </section>
+
     <!-- Account -->
     <section id="tab-account" class="card" style="display:none">
       <h2>حسابي</h2>
@@ -237,5 +295,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js" integrity="sha384-2zrRDgDHSYB/GN3nFW3fsZXoxEhKIr3N2h63Tc6DEOB9JJdFIu8xMJT2Cph/gBil" crossorigin="anonymous"></script>
 <script src="index.js"></script>
+<script src="pickup-admin.js"></script>
 </body>
 </html>

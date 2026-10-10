@@ -215,6 +215,7 @@ function renderSchoolUsers() {
   const users = JSON.parse(document.getElementById("detail").dataset.users||"[]");
   box.innerHTML = users.length ? users.map(u=>`<div class="row" style="padding:8px 0;border-bottom:1px solid #EFF1F7">
       <span style="flex:1" dir="ltr">${esc(u.email||"—")}</span>
+      <span class="muted">${esc(({admin:"مدير",manager:"مشغّل",viewer:"مشاهد",gate:"مشرف البوابة"})[u.role]||"")}</span>
       <button class="ghost sm" data-onclick="h22" data-h22a0="${esc(u.id)}">تغيير كلمة المرور</button>
       <button class="ghost sm danger" data-onclick="h23" data-h23a0="${esc(u.id)}" data-h23a1="${esc(u.email||"")}">حذف</button>
     </div>`).join("") : '<p class="muted">لا حسابات دخول بعد — أنشئ حسابًا لتسليمه للمدرسة.</p>';
@@ -224,7 +225,8 @@ async function createSchoolUser() {
   const pw = document.getElementById("suPass").value;
   if (!email || pw.length < 10) return show("msg","أدخل بريدًا وكلمة مرور (10 أحرف على الأقل)", true);
   show("msg","… جارٍ الإنشاء");
-  const { data, error } = await db.functions.invoke("admin-users", { body:{ action:"create", schoolId:cur.id, email, password:pw } });
+  const role = document.getElementById("suRole")?.value || "admin";
+  const { data, error } = await db.functions.invoke("admin-users", { body:{ action:"create", schoolId:cur.id, email, password:pw, role } });
   const err = error || data?.error;
   if (err) return show("msg","فشل: " + (data?.error || err.message || err), true);
   audit("account.create", cur.id, `${esc(cur.name)}: ${esc(email)}`);
@@ -348,6 +350,7 @@ function renderDetail() {
         <h3 style="flex:1;margin:0">حسابات دخول المدرسة</h3>
         <input id="suEmail" type="email" placeholder="بريد المدرسة" dir="ltr" style="min-width:200px">
         <input id="suPass" type="text" placeholder="كلمة المرور" dir="ltr" style="width:150px">
+        <select id="suRole" title="الدور"><option value="admin">مدير المدرسة</option><option value="manager">مشغّل</option><option value="viewer">مشاهد</option><option value="gate">مشرف البوابة (الاستلام)</option></select>
         <button class="primary sm" data-onclick="h39">+ إنشاء حساب</button>
       </div>
       <div id="schoolUsers"><p class="muted">… جارٍ التحميل</p></div>

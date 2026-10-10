@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://meeqat-api.tripleodoo.com wss://meeqat-api.tripleodoo.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#062A1F">
+<title>ميقات — شاشة البوابة</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root { --ground: #062A1F; --enamel: #0B6B4A; --mint: #5EE0AD; --brass: #C8A45D; --paper: #F6F1E5;
+          --ink: #0F1A16; --dim: rgba(246,241,229,.62); --line: rgba(246,241,229,.14); --red: #E8806F; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--ground); color: var(--paper);
+    font-family: 'IBM Plex Sans Arabic', system-ui, Tahoma, sans-serif; }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+  header { display: flex; align-items: center; gap: 16px; padding: 18px 28px; border-bottom: 1px solid var(--line); }
+  header .logo { width: 44px; height: 44px; border-radius: 12px; background: var(--enamel); display: inline-flex; align-items: center; justify-content: center; }
+  header h1 { margin: 0; font-size: 24px; font-weight: 600; }
+  header .school { color: var(--dim); font-size: 17px; flex: 1; }
+  header .clock { font-size: 30px; font-weight: 500; color: var(--mint); }
+  .live { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--dim); }
+  .live i { width: 10px; height: 10px; border-radius: 50%; background: var(--red); display: inline-block; }
+  .live.on i { background: var(--mint); box-shadow: 0 0 0 4px rgba(94,224,173,.18); }
+  button, select, input { font-family: inherit; font-size: 16px; }
+  .btn { border: 0; border-radius: 14px; padding: 12px 20px; cursor: pointer; font-weight: 600; }
+  .btn.mint { background: var(--mint); color: var(--ground); }
+  .btn.brass { background: var(--brass); color: var(--ground); }
+  .btn.ghost { background: transparent; color: var(--paper); border: 1px solid var(--line); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  select, input { background: rgba(246,241,229,.06); color: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  select option { color: var(--ink); }
+  main { display: grid; grid-template-columns: 1fr 360px; gap: 24px; padding: 24px 28px; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  .board { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 18px; align-content: start; }
+  .card { background: var(--enamel); border-radius: 22px; padding: 22px 24px; display: flex; flex-direction: column; gap: 10px;
+    border: 2px solid transparent; transition: border-color .3s; }
+  .card.newest { border-color: var(--mint); animation: glow 1.6s ease-in-out 3; }
+  @keyframes glow { 50% { box-shadow: 0 0 0 10px rgba(94,224,173,.22); } }
+  .card .name { font-size: 34px; font-weight: 700; line-height: 1.25; }
+  .card .label { font-size: 20px; color: var(--dim); }
+  .card .meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 16px; }
+  .gate { background: var(--brass); color: var(--ground); border-radius: 10px; padding: 3px 12px; font-weight: 700; }
+  .status { border-radius: 999px; padding: 3px 12px; font-weight: 600; background: rgba(6,42,31,.45); }
+  .status.announced { color: var(--mint); } .status.released { color: var(--brass); }
+  .card .actions { display: flex; gap: 10px; margin-top: 6px; }
+  .card .actions .btn { flex: 1; font-size: 18px; padding: 14px; }
+  .empty { grid-column: 1 / -1; text-align: center; padding: 80px 20px; color: var(--dim); font-size: 22px; }
+  aside { display: flex; flex-direction: column; gap: 18px; }
+  .panel { background: rgba(246,241,229,.05); border: 1px solid var(--line); border-radius: 20px; padding: 18px; }
+  .panel h2 { margin: 0 0 12px; font-size: 18px; font-weight: 600; color: var(--brass); }
+  .result, .done { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .result span, .done span { flex: 1; }
+  .done { color: var(--dim); font-size: 15px; }
+  .msg { min-height: 22px; font-size: 15px; color: var(--mint); }
+  .msg.err { color: var(--red); }
+  #login { max-width: 420px; margin: 12vh auto; background: var(--enamel); border-radius: 22px; padding: 28px; display: flex; flex-direction: column; gap: 12px; }
+  #login h2 { margin: 0 0 6px; }
+  .toolbar { display: flex; gap: 10px; align-items: center; }
+  body.kiosk header .toolbar .ghost { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <span class="logo"><svg viewBox="0 0 128 128" width="66%" height="66%" aria-hidden="true"><g fill="#F6F1E5"><circle cx="64" cy="23.5" r="5.5"/><rect x="60" y="26" width="8" height="7" rx="3.2"/><path d="M64 31C83 31 92 46.5 92 65V74C92 82 95 87.2 100 91H28C33 87.2 36 82 36 74V65C36 46.5 45 31 64 31Z"/><rect x="26" y="88" width="76" height="10.5" rx="5.25"/><circle cx="64" cy="107.5" r="6.6"/></g><circle cx="99" cy="33" r="9" fill="#5EE0AD"/></svg></span>
+  <h1>شاشة البوابة</h1>
+  <span class="school" id="schoolName"></span>
+  <span class="live" id="live"><i></i><span id="liveText">غير متصل</span></span>
+  <div class="toolbar" id="toolbar" style="display:none">
+    <select id="gateFilter" data-onchange="g4" title="البوابة"></select>
+    <button class="btn ghost" data-onclick="g5" title="ملء الشاشة">⛶</button>
+    <button class="btn ghost" id="logoutBtn" data-onclick="g6">خروج</button>
+  </div>
+  <span class="clock mono" id="clock"></span>
+</header>
+
+<div id="login" style="display:none">
+  <h2>تسجيل دخول مشرف البوابة</h2>
+  <input id="email" type="email" placeholder="البريد الإلكتروني" dir="ltr">
+  <input id="password" type="password" placeholder="كلمة المرور" dir="ltr">
+  <button class="btn mint" data-onclick="g1">دخول</button>
+  <div class="msg" id="loginMsg"></div>
+</div>
+
+<main id="app" style="display:none">
+  <section>
+    <div class="msg" id="msg"></div>
+    <div class="board" id="board"></div>
+  </section>
+  <aside>
+    <div class="panel">
+      <h2>نداء يدوي</h2>
+      <input id="manualSearch" placeholder="اسم الطالب أو رقمه" style="width:100%" data-oninput="g2">
+      <div id="manualResults"></div>
+      <p style="color:var(--dim);font-size:13px;margin:10px 0 0">لوليّ الأمر الذي ليس لديه التطبيق: ابحث عن الطالب ثم اضغط «نداء».</p>
+    </div>
+    <div class="panel">
+      <h2>آخر التسليمات</h2>
+      <div id="doneList"></div>
+    </div>
+  </aside>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js" integrity="sha384-2zrRDgDHSYB/GN3nFW3fsZXoxEhKIr3N2h63Tc6DEOB9JJdFIu8xMJT2Cph/gBil" crossorigin="anonymous"></script>
+<script src="gate.js"></script>
+</body>
+</html>

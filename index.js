@@ -65,6 +65,8 @@ async function init() {
   if (!membership) return showUnlinked();
   schoolId = membership.school_id;
   myRole = membership.role || "admin";
+  // Gate supervisors (ميقات – ولي الأمر) only use the gate board.
+  if (myRole === "gate") { location.replace("./gate.html"); return; }
 
   const { data: school } = await db.from("schools").select("name, plan, subscription_until").maybeSingle();
   document.getElementById("schoolName").textContent =
@@ -73,6 +75,7 @@ async function init() {
   document.getElementById("login").style.display = "none";
   document.getElementById("app").style.display = "block";
   document.getElementById("logoutBtn").style.display = "inline-block";
+  document.getElementById("gateLink").style.display = "inline-block";
   await loadLibrary();
   await loadTuyaList();
   await loadConfig();
@@ -460,7 +463,7 @@ function importConfig(file) {
 // ─── UI helpers ─────────────────────────────────────────────────────────────
 function showTab(name) {
   document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
-  ["schedules", "reports", "logs", "announce", "devices", "sounds", "smart", "account"].forEach(t =>
+  ["schedules", "reports", "logs", "announce", "devices", "sounds", "smart", "students", "pickup", "notices", "account"].forEach(t =>
     document.getElementById("tab-" + t).style.display = t === name ? "block" : "none");
   if (name === "reports") loadReports();
   if (name === "logs") loadLogs();
@@ -469,6 +472,9 @@ function showTab(name) {
   if (name === "sounds") renderLibrary();
   if (name === "smart") loadTuya();
   if (name === "account") loadAccount();
+  if (name === "students") loadStudents();
+  if (name === "pickup") loadPickupSettings();
+  if (name === "notices") loadNotices();
 }
 
 // ─── Smart devices (Tuya) ───────────────────────────────────────────────────
@@ -822,7 +828,7 @@ async function deleteSound(id, path) {
 // ─── Account / profile ──────────────────────────────────────────────────────
 async function loadAccount() {
   document.getElementById("accEmail").textContent = me?.email || "";
-  document.getElementById("accRole").textContent = myRole === "admin" ? "مدير المدرسة" : "مشاهد";
+  document.getElementById("accRole").textContent = ({ admin: "مدير المدرسة", manager: "مشغّل", viewer: "مشاهد", gate: "مشرف البوابة" })[myRole] || myRole;
   const { data } = await db.from("profiles").select("full_name, phone").eq("user_id", me.id).maybeSingle();
   document.getElementById("accName").value = data?.full_name || "";
   document.getElementById("accPhone").value = data?.phone || "";
@@ -1023,7 +1029,10 @@ const _H = {
   h50(event) { tuyaFillDp() },
   h51(event) { saveTuya(this.dataset.h51a0) },
   h52(event) { document.getElementById('tuyaForm').style.display='none' },
-  h53(event) { deleteSound(this.dataset.h53a0,this.dataset.h53a1) }
+  h53(event) { deleteSound(this.dataset.h53a0,this.dataset.h53a1) },
+  h54(event) { showTab('students') },
+  h55(event) { showTab('pickup') },
+  h56(event) { showTab('notices') }
 };
 ["click", "change", "input"].forEach(type => document.addEventListener(type, ev => {
   for (let el = ev.target; el && el !== document; el = el.parentElement) {
