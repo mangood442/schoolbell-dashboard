@@ -1,4 +1,4 @@
-/*! wan-track.js — Wajhat Al Nuzum ads tracking (gtag GA4 + Google Ads conversions). 2026-10-26.
+/*! wan-track.js — Wajhat Al Nuzum ads tracking (gtag GA4 + Google Ads conversions). 2026-10-26 (v2: + Microsoft Clarity).
  * Usage: <script src="/path/wan-track.js" data-wan-product="tripleqms" defer></script>
  * - Loads gtag.js (AW-18345311586 + GA4 G-EFNLMQ7WTQ); no inline script needed (strict-CSP safe).
  * - Fires "WAN - WhatsApp click" on every wa.me / api.whatsapp.com / whatsapp: link click.
@@ -6,6 +6,9 @@
  *   (render it ONLY after the server confirmed the sign-up), or when code calls wanTrack.signup().
  * - Fires "WAN - Quote form" (lead) for data-wan-conv="lead" or wanTrack.lead().
  * - Keeps gclid/gbraid/wbraid/utm_* of the landing visit in localStorage (wan_attr, 90 days): wanTrack.attribution().
+ * - v2 2026-10-26: Microsoft Clarity (heatmaps/recordings, inputs masked by default) loaded after window load, per-host
+ *   project id below, public paths only (SPA navigation to a non-public path stops it). Opt out: data-wan-clarity="off".
+ *   CSP needs https://www.clarity.ms https://*.clarity.ms https://c.bing.com in script-src, connect-src and img-src.
  */
 (function () {
   if (window.wanTrack) return;
@@ -100,12 +103,52 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scanMarks);
   else scanMarks();
 
+  // ---- Microsoft Clarity (public pages only; Clarity masks sensitive inputs by default) ----
+  var CLARITY = {
+    'tripleqms.com': { id: 'z3qfr8pn2h', allow: /^\/($|index\.html|en\/?$|subscribe(\/|$))/ },
+    'shashatna.com': { id: 'z3qfzixuj7' },
+    'app.shashatna.com': { id: 'z3qfzixuj7', allow: /^\/signup(\/|$)/ },
+    'wasolak.com': { id: 'z3qg7l99va', allow: /^\/($|index\.html|pricing(\/|$))/ },
+    'meeqat.me': { id: 'z3qgfzk6t8', allow: /^\/($|index\.html|signup\.html|en\/?$)/ },
+    'markazak.com': { id: 'z3qgobbi4d' },
+    'tripleodoo.com': { id: 'z3qgw8vwsb', allow: /^(\/(ar|en))?(\/(pricing|features|about|contact|register|privacy|terms)(\/.*)?)?\/?$/ }
+  };
+  var CL = CLARITY[location.hostname.replace(/^www\./, '')];
+  var clOff = me && me.getAttribute('data-wan-clarity') === 'off';
+  var clState = 0; // 0 idle, 1 loaded, 2 stopped for this page view
+  function clAllowed() { return !!CL && !clOff && (!CL.allow || CL.allow.test(location.pathname)); }
+  function clLoad() {
+    if (clState || !clAllowed() || (window.clarity && window.clarity.t)) return;
+    clState = 1;
+    window.clarity = window.clarity || function () { (window.clarity.q = window.clarity.q || []).push(arguments); };
+    var t = document.createElement('script');
+    t.async = true;
+    t.src = 'https://www.clarity.ms/tag/' + CL.id;
+    (document.head || document.documentElement).appendChild(t);
+    try { window.clarity('set', 'product', PRODUCT); } catch (_) {}
+  }
+  function clRoute() {
+    if (clState === 1 && !clAllowed()) { clState = 2; try { window.clarity('stop'); } catch (_) {} }
+    else if (clState === 0) clLoad();
+  }
+  if (CL && !clOff) {
+    var clStart = function () { setTimeout(clLoad, 0); };
+    if (document.readyState === 'complete') clStart(); else window.addEventListener('load', clStart);
+    ['pushState', 'replaceState'].forEach(function (m) {
+      var orig = history[m];
+      if (typeof orig !== 'function') return;
+      history[m] = function () { var r = orig.apply(this, arguments); setTimeout(clRoute, 0); return r; };
+    });
+    window.addEventListener('popstate', function () { setTimeout(clRoute, 0); });
+  }
+
   window.wanTrack = {
     product: PRODUCT,
     signup: function (opt) { fire('signup', opt); },
     lead: function (opt) { fire('lead', opt); },
     wa: function () { fire('wa'); },
     scan: scanMarks,
-    attribution: readAttr
+    attribution: readAttr,
+    clarity: function () { return { id: CL && CL.id, state: clState, allowed: clAllowed() }; }
   };
 })();
