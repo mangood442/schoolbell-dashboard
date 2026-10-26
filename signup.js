@@ -32,6 +32,8 @@ async function submitForm() {
   if (e && TURNSTILE_SITE_KEY && window.turnstile) { window.turnstile.reset("#captcha"); turnstileToken = ""; }
   if (e) { btn.disabled = false; btn.textContent = "ابدأ التجربة المجانية"; return err(typeof e === "string" ? e : (data?.error || e.message || "تعذّر الإنشاء")); }
   document.getElementById("formCard").style.display = "none";
+  // Google Ads: sign-up confirmed by the server (school created, pending e-mail) -> conversion
+  try { if (window.wanTrack) window.wanTrack.signup({ method: "trial" }); } catch (_) {}
   if (data.pending) {   // SEC-20261009: e-mail verification step
     showCheckMail(email);
     return;
