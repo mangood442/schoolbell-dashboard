@@ -80,6 +80,7 @@ async function init() {
   await loadTuyaList();
   await loadConfig();
   loadLogs(); loadDevices(); loadCommands();
+  if (typeof onboardingRefresh === "function") onboardingRefresh();   // ميقات v17: «ابدأ هنا» + الاشتراك
 }
 
 document.getElementById("logoutBtn").onclick = async () => { await db.auth.signOut(); location.reload(); };
@@ -463,7 +464,7 @@ function importConfig(file) {
 // ─── UI helpers ─────────────────────────────────────────────────────────────
 function showTab(name) {
   document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
-  ["schedules", "reports", "logs", "announce", "devices", "sounds", "smart", "students", "pickup", "notices", "account"].forEach(t =>
+  ["schedules", "reports", "logs", "announce", "devices", "sounds", "smart", "students", "pickup", "notices", "billing", "account"].forEach(t =>
     document.getElementById("tab-" + t).style.display = t === name ? "block" : "none");
   if (name === "reports") loadReports();
   if (name === "logs") loadLogs();
@@ -475,6 +476,7 @@ function showTab(name) {
   if (name === "students") loadStudents();
   if (name === "pickup") loadPickupSettings();
   if (name === "notices") loadNotices();
+  if (name === "billing" && typeof renderBilling === "function") renderBilling();
 }
 
 // ─── Smart devices (Tuya) ───────────────────────────────────────────────────

@@ -83,6 +83,29 @@
   #ntSections, #ntGrades { gap: 10px; flex-wrap: wrap; margin-top: 8px; }
   textarea { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; font-size: 14px; font-family: inherit; width: 100%; min-height: 110px; }
   a.gate-link { color: var(--green-dark); font-weight: 600; text-decoration: none; border: 1px solid var(--green-border); border-radius: 12px; padding: 8px 14px; }
+  /* ميقات v17 — ابدأ هنا + الاشتراك */
+  .trial-banner { display:none; align-items:center; gap:12px; padding:12px 16px; border-radius:14px; margin-bottom:14px; border:1px solid var(--green-border); background:var(--green-container); color:var(--green-dark); }
+  .trial-banner.warn { background:var(--amber-bg); border-color:#EED9A8; color:#7A4B0E; }
+  .trial-banner.bad { background:#FDECEA; border-color:#EBC4BF; color:var(--red); }
+  .ob-steps { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
+  .ob-steps li { display:flex; gap:12px; align-items:center; padding:12px 14px; border:1px solid var(--line); border-radius:14px; flex-wrap:wrap; }
+  .ob-steps li.done { background:#F7FAF8; } .ob-steps li.done b { color:var(--muted); text-decoration:line-through; }
+  .ob-steps li.next { border-color:var(--green); box-shadow:0 0 0 3px var(--green-container); }
+  .ob-n { width:30px; height:30px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; background:var(--green-container); color:var(--green-dark); font-weight:700; flex:none; }
+  .ob-steps li.done .ob-n { background:var(--green); color:#fff; }
+  .ob-a { display:flex; gap:6px; flex-wrap:wrap; }
+  .code-chip { background:#fff; border:1px dashed var(--green); border-radius:8px; padding:2px 8px; letter-spacing:1px; }
+  a.btnlink { text-decoration:none; display:inline-block; }
+  a.primary.btnlink { color:#fff; background:var(--green); padding:8px 14px; border-radius:10px; font-weight:600; }
+  a.ghost.btnlink { color:var(--mid); border:1px solid var(--line); padding:5px 10px; border-radius:9px; background:#fff; font-size:13px; }
+  .ob-plans { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; }
+  .ob-plan { border:1px solid var(--line); border-radius:16px; padding:16px; cursor:pointer; display:block; }
+  .ob-plan.sel { border-color:var(--green); box-shadow:0 0 0 3px var(--green-container); }
+  .ob-plan input { accent-color:var(--green); margin-inline-end:6px; }
+  .ob-plan ul { margin:8px 0 0; padding-inline-start:18px; color:var(--mid); font-size:14px; }
+  .ob-price { font-size:20px; font-weight:700; color:var(--green-dark); margin-top:6px; }
+  .ob-open { border-color:var(--green-border); }
+  button[disabled] { opacity:.5; cursor:not-allowed; }
 </style>
 </head>
 <body>
@@ -109,6 +132,8 @@
 
   <!-- App -->
   <div id="app" style="display:none">
+    <div id="trialBanner" class="trial-banner"></div>
+    <div id="startHere" class="card" style="display:none"></div>
     <div class="tabs">
       <button data-tab="schedules" class="active" data-onclick="h2">📅 الجداول</button>
       <button data-tab="reports" data-onclick="h3">📊 التقارير</button>
@@ -120,6 +145,7 @@
       <button data-tab="students" data-onclick="h54">👨‍👩‍👧 الطلاب وأولياء الأمور</button>
       <button data-tab="pickup" data-onclick="h55">🚗 إعدادات الاستلام</button>
       <button data-tab="notices" data-onclick="h56">📣 التعاميم</button>
+      <button data-tab="billing" data-onclick="o1">💳 الاشتراك</button>
       <button data-tab="account" data-onclick="h9">👤 حسابي</button>
     </div>
     <div class="msg" id="msg"></div>
@@ -269,6 +295,13 @@
       <div id="ntList"></div>
     </section>
 
+    <!-- Billing (ميقات v17) -->
+    <section id="tab-billing" style="display:none">
+      <div class="card"><h2 style="margin-bottom:4px">الاشتراك والدفع بالتحويل البنكي</h2>
+        <p class="muted" style="margin:0">اختر الباقة ← حمّل الفاتورة المبدئية ← حوّل المبلغ ← ارفع الإيصال. نؤكد ونمدد الاشتراك خلال يوم عمل دون أي توقف للجرس.</p></div>
+      <div id="billingBox"></div>
+    </section>
+
     <!-- Account -->
     <section id="tab-account" class="card" style="display:none">
       <h2>حسابي</h2>
@@ -296,5 +329,6 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js" integrity="sha384-2zrRDgDHSYB/GN3nFW3fsZXoxEhKIr3N2h63Tc6DEOB9JJdFIu8xMJT2Cph/gBil" crossorigin="anonymous"></script>
 <script src="index.js"></script>
 <script src="pickup-admin.js"></script>
+<script src="onboarding.js"></script>
 </body>
 </html>

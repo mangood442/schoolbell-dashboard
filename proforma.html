@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://meeqat-api.tripleodoo.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>فاتورة مبدئية — ميقات</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  @page { size: A4; margin: 12mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'IBM Plex Sans Arabic', Tahoma, sans-serif; color: #0F1A16; background: #EEF2EF; font-size: 13.5px; }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+  .bar { max-width: 210mm; margin: 14px auto; display: flex; gap: 10px; justify-content: flex-end; }
+  .bar button, .bar a { font-family: inherit; font-size: 14px; padding: 9px 18px; border-radius: 10px; border: 1px solid #BFE3D2; background: #fff; color: #0B6B4A; cursor: pointer; text-decoration: none; }
+  .bar button.p { background: #0B6B4A; color: #fff; border-color: #0B6B4A; }
+  .sheet { max-width: 210mm; min-height: 270mm; margin: 0 auto 24px; background: #fff; padding: 14mm 14mm 10mm; box-shadow: 0 2px 14px rgba(0,0,0,.08); }
+  header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #0B6B4A; padding-bottom: 12px; }
+  .brand b { font-size: 20px; color: #0B6B4A; display: block; }
+  .brand span, .meta span { display: block; color: #5E6F66; font-size: 12.5px; line-height: 1.7; }
+  .meta { text-align: left; direction: ltr; }
+  h1 { font-size: 22px; margin: 18px 0 2px; text-align: center; } .sub { text-align: center; color: #5E6F66; margin: 0 0 16px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .box { border: 1px solid #E0E7E3; border-radius: 10px; padding: 10px 12px; }
+  .box h3 { margin: 0 0 6px; font-size: 13px; color: #0B6B4A; }
+  .box div { line-height: 1.8; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+  th, td { border: 1px solid #E0E7E3; padding: 8px 10px; text-align: right; }
+  th { background: #E6F4ED; font-weight: 600; font-size: 12.5px; }
+  td.n { text-align: left; direction: ltr; font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
+  .tot td { font-weight: 600; } .tot.g td { background: #E6F4ED; font-size: 15px; }
+  .note { background: #FBEFD6; border-radius: 10px; padding: 10px 12px; color: #6B4310; line-height: 1.8; margin-top: 12px; }
+  footer { margin-top: 18px; border-top: 1px solid #E0E7E3; padding-top: 8px; color: #5E6F66; font-size: 11.5px; text-align: center; }
+  .err { max-width: 600px; margin: 80px auto; background: #fff; padding: 24px; border-radius: 14px; text-align: center; }
+  @media print { body { background: #fff; } .bar { display: none; } .sheet { box-shadow: none; margin: 0; padding: 0; min-height: auto; max-width: none; } }
+</style>
+</head>
+<body>
+<div class="bar"><a href="./index.html">↩ لوحة المدرسة</a><button class="p" id="printBtn">🖨 طباعة / حفظ PDF</button></div>
+<div id="root"><p class="err">جارٍ التحميل…</p></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js" integrity="sha384-2zrRDgDHSYB/GN3nFW3fsZXoxEhKIr3N2h63Tc6DEOB9JJdFIu8xMJT2Cph/gBil" crossorigin="anonymous"></script>
+<script src="proforma.js"></script>
+</body>
+</html>

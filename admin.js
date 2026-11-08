@@ -53,7 +53,7 @@ async function loadAll() {
   const [a,b,c,d] = await Promise.all([
     db.from("schools").select("*").order("created_at"),
     db.from("devices").select("id, school_id, name, app_version, last_seen_at, section_id"),
-    db.from("invoices").select("id, school_id, amount, currency, period_months, status, created_at, paid_at").order("created_at",{ascending:false}).limit(200),
+    db.from("invoices").select("id, school_id, amount, currency, period_months, status, created_at, paid_at, number, plan_key, vat, total, buyer_name, receipt_at, receipt_path, receipt_note, source, decided_note").order("created_at",{ascending:false}).limit(200),
     db.from("activation_codes").select("code, school_id, used_at"),
   ]);
   schools = a.data || []; devices = b.data || []; invoices = c.data || []; codes = d.data || [];
@@ -584,7 +584,8 @@ async function createInvoiceFor() {
   if (error) return show("msg","فشل: "+error.message,true);
   await loadAll(); renderDetail(); show("msg","✓ أُنشئت الفاتورة");
 }
-async function payInvoice(id){ const {data,error}=await db.rpc("mark_invoice_paid",{p_invoice:id,p_ref:"manual"});
+async function payInvoice(id){ const _i=invoices.find(i=>i.id===id); if(!confirm(`تأكيد استلام ${_i?.total??_i?.amount??""} ر.س للفاتورة ${_i?.number||"#"+id} وتمديد الاشتراك ${_i?.period_months||""} شهرًا؟`)) return;
+  const {data,error}=await db.rpc("mark_invoice_paid",{p_invoice:id,p_ref:"manual"});
   if(error) return show("msg","فشل: "+error.message,true);
   const inv=invoices.find(i=>i.id===id);
   audit("invoice.paid", inv?.school_id, `فاتورة #${id} — الاشتراك حتى ${data}`);
@@ -595,12 +596,32 @@ async function cancelInvoice(id){ await db.from("invoices").update({status:"canc
 
 // ── Global invoices tab ──
 function loadInvoices() {
-  document.getElementById("invoicesBody").innerHTML = invoices.map(inv=>{
+  // ميقات v17: self-service transfer requests (source=school) show number, plan, receipt and reject.
+  const rows = [...invoices].sort((a,b)=> (b.status==="pending" && b.receipt_at ? 1:0) - (a.status==="pending" && a.receipt_at ? 1:0));
+  document.getElementById("invoicesBody").innerHTML = rows.map(inv=>{
     const s = schools.find(x=>x.id===inv.school_id);
-    const sp = inv.status==="paid"?'<span class="pill g">مدفوعة</span>':inv.status==="cancelled"?'<span class="muted">ملغاة</span>':'<span class="pill a">معلّقة</span>';
-    const act = inv.status==="pending"?`<button class="ghost sm" data-onclick="h41" data-h41a0="${esc(JSON.stringify(inv.id))}">✓ تحصيل</button> <button class="ghost sm danger" data-onclick="h42" data-h42a0="${esc(JSON.stringify(inv.id))}">إلغاء</button>`:"";
-    return `<tr><td>${inv.id}</td><td>${esc(s?.name||"?")}</td><td class="mono" dir="ltr">${inv.amount} ${inv.currency}</td><td>${inv.period_months} شهر</td><td>${sp}</td><td class="mono" dir="ltr">${fmt(inv.created_at)}</td><td>${act}</td></tr>`;
+    const sp = inv.status==="paid"?'<span class="pill g">مدفوعة</span>':inv.status==="cancelled"?'<span class="muted">ملغاة</span>':inv.status==="rejected"?'<span class="muted">مرفوضة</span>':
+      (inv.receipt_at?'<span class="pill a">إيصال بانتظار التأكيد</span>':'<span class="pill a">معلّقة</span>');
+    const id = esc(JSON.stringify(inv.id));
+    const act = inv.status==="pending"?`<button class="ghost sm" data-onclick="h41" data-h41a0="${id}">✓ تأكيد الدفع</button> ${inv.source==="school"?`<button class="ghost sm danger" data-onclick="h77" data-h77a0="${id}">رفض</button>`:""} <button class="ghost sm danger" data-onclick="h42" data-h42a0="${id}">إلغاء</button>`:"";
+    const rc = inv.receipt_path?`<button class="ghost sm" data-onclick="h76" data-h76a0="${id}" title="${esc(inv.receipt_note||"")}">🧾 الإيصال</button>`:"";
+    const pf = inv.number?`<a class="ghost sm" style="text-decoration:none" target="_blank" rel="noopener" href="./proforma.html?id=${inv.id}">📄</a>`:"";
+    const amt = inv.total!=null?`${inv.total} ${inv.currency} <span class="muted">(${inv.amount}+ض)</span>`:`${inv.amount} ${inv.currency}`;
+    return `<tr><td class="mono" dir="ltr">${esc(inv.number||String(inv.id))}${inv.source==="school"?' <span class="muted">🏫</span>':""}</td><td>${esc(s?.name||"?")}${inv.buyer_name&&inv.buyer_name!==s?.name?`<br><span class="muted">${esc(inv.buyer_name)}</span>`:""}</td><td class="mono" dir="ltr">${amt}</td><td>${inv.period_months} شهر${inv.plan_key?" · "+esc(planName(inv.plan_key)):""}</td><td>${sp}</td><td class="mono" dir="ltr">${fmt(inv.created_at)}</td><td>${rc} ${pf} ${act}</td></tr>`;
   }).join("")||'<tr><td colspan="7" class="muted">لا فواتير</td></tr>';
+}
+async function viewReceipt(id) {
+  const { data, error } = await db.functions.invoke("billing", { body: { action:"receipt_url", invoiceId:id } });
+  if (error || !data?.url) return show("msg","تعذّر فتح الإيصال",true);
+  window.open(data.url, "_blank", "noopener");
+}
+async function rejectInvoice(id) {
+  const note = prompt("سبب الرفض (يظهر للمدرسة ويُرسل في البريد):", "لم نجد التحويل في الحساب");
+  if (note === null) return;
+  const { error } = await db.rpc("reject_invoice", { p_invoice:id, p_note:note });
+  if (error) return show("msg","فشل: "+error.message,true);
+  audit("invoice.reject", invoices.find(i=>i.id===id)?.school_id, `#${id} — ${note}`);
+  await loadAll(); loadInvoices(); show("msg","✓ رُفض الطلب");
 }
 async function createInvoice() {
   const amount=+document.getElementById("invAmount").value; if(!amount)return;
@@ -952,7 +973,9 @@ const _H = {
   h72(event) { deletePlan(this.dataset.h72a0) },
   h73(event) { editPlan('') },
   h74(event) { savePlan() },
-  h75(event) { editingPlan=null;renderPlans() }
+  h75(event) { editingPlan=null;renderPlans() },
+  h76(event) { viewReceipt(_hv(this.dataset.h76a0)) },
+  h77(event) { rejectInvoice(_hv(this.dataset.h77a0)) }
 };
 ["click", "change", "input"].forEach(type => document.addEventListener(type, ev => {
   for (let el = ev.target; el && el !== document; el = el.parentElement) {
