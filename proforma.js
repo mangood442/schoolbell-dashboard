@@ -43,10 +43,10 @@ document.getElementById("printBtn").onclick = () => window.print();
       <div class="box"><h3>العميل / Bill to</h3><div><b>${esc(inv.buyer_name || school?.name || "")}</b><br>
         ${inv.buyer_vat ? `الرقم الضريبي: <span class="mono">${esc(inv.buyer_vat)}</span><br>` : ""}${inv.buyer_address ? esc(inv.buyer_address) + "<br>" : ""}
         المدرسة: ${esc(school?.name || "")}</div></div>
-      <div class="box"><h3>البائع / Seller</h3><div>${SELLER.ar} — ${SELLER.en}<br>${SELLER.email}<br><span class="mono" dir="ltr">${SELLER.phone}</span></div></div>
+      <div class="box"><h3>البائع / Seller</h3><div>${SELLER.ar} — ${SELLER.en}<br>${SELLER.email}<br><bdi dir="ltr" class="mono">${SELLER.phone}</bdi></div></div>
     </div>
     <table><thead><tr><th>#</th><th>البيان</th><th>الكمية</th><th>سعر الوحدة</th><th>المبلغ</th></tr></thead><tbody>
-      <tr><td>1</td><td>اشتراك ميقات — باقة ${esc(plan?.name_ar || inv.plan_key || "")} — ${years === 1 ? "سنة واحدة" : years + " سنوات"} لمدرسة واحدة<br><span style="color:#5E6F66;font-size:12px">Meeqat school-bell subscription — ${esc(inv.plan_key || "")} plan, ${years} year(s)</span></td>
+      <tr><td>1</td><td>اشتراك ميقات — باقة ${esc(plan?.name_ar || inv.plan_key || "")} — ${years === 1 ? "سنة واحدة" : years === 2 ? "سنتان" : years + " سنوات"} لمدرسة واحدة<br><span style="color:#5E6F66;font-size:12px">Meeqat school-bell subscription — ${esc(inv.plan_key || "")} plan, ${years} year(s)</span></td>
         <td class="n">${inv.period_months >= 12 ? years : 1}</td><td class="n">${sar(unit)}</td><td class="n">${sar(inv.amount)}</td></tr>
       <tr class="tot"><td colspan="4">المجموع قبل الضريبة / Subtotal</td><td class="n">${sar(inv.amount)}</td></tr>
       <tr class="tot"><td colspan="4">ضريبة القيمة المضافة 15% / VAT</td><td class="n">${sar(vat)}</td></tr>

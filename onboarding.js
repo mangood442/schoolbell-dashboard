@@ -7,7 +7,7 @@ let BILL = null;          // last billing state
 const obCanWrite = () => myRole === "admin" || myRole === "manager";
 const obHiddenKey = () => "mq_starthere_hidden_" + schoolId;
 const fmtSAR = n => Number(n || 0).toLocaleString("ar-SA", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + " ر.س";
-const daysLeft = d => d ? Math.round((Date.parse(d + "T23:59:59+03:00") - Date.now()) / 86400000) : null;
+const daysLeft = d => d ? Math.floor((Date.parse(d + "T23:59:59+03:00") - Date.now()) / 86400000) : null;
 
 async function obCall(body) {
   const { data, error } = await db.functions.invoke("billing", { body });
@@ -133,7 +133,7 @@ function renderBilling() {
     openCard = `<div class="card ob-open">
       <div class="row"><h2 style="flex:1;margin:0">الفاتورة المبدئية <span class="mono" dir="ltr">${esc(open.number || "#" + open.id)}</span></h2>
         <a class="primary sm btnlink" target="_blank" rel="noopener" href="./proforma.html?id=${open.id}">📄 عرض / تحميل PDF</a></div>
-      <p class="muted" style="margin:6px 0 12px">${esc(open.buyer_name || "")} — ${esc(planName(open.plan_key))} لمدة ${open.period_months / 12} ${open.period_months === 12 ? "سنة" : "سنوات"}</p>
+      <p class="muted" style="margin:6px 0 12px">${esc(open.buyer_name || "")} — ${esc(planName(open.plan_key))} لمدة ${yearsTxt(open.period_months / 12)}</p>
       <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
         <div class="kpi"><div class="l">المبلغ قبل الضريبة</div><div class="n" style="font-size:20px">${fmtSAR(open.amount)}</div></div>
         <div class="kpi"><div class="l">ضريبة القيمة المضافة 15%</div><div class="n" style="font-size:20px">${fmtSAR(open.vat)}</div></div>
@@ -183,6 +183,7 @@ function renderBilling() {
   const reshow = localStorage.getItem(obHiddenKey()) === "1" ? `<p><button class="ghost sm" data-onclick="o10">إظهار بطاقة «ابدأ هنا»</button></p>` : "";
   box.innerHTML = statusCard + openCard + form + hist + reshow;
 }
+function yearsTxt(y) { return y === 1 ? "سنة واحدة" : y === 2 ? "سنتين" : y + " سنوات"; }
 function receiptForm(inv) {
   return `<div class="row" style="margin-top:6px">
     <input type="file" id="obFile" accept="application/pdf,image/jpeg,image/png,image/webp">
