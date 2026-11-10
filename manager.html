@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://meeqat-api.tripleodoo.com; media-src 'self' blob: https://meeqat-api.tripleodoo.com; connect-src 'self' https://meeqat-api.tripleodoo.com wss://meeqat-api.tripleodoo.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0C1311">
 <title>ميقات — المدير</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxMjggMTI4Jz48cmVjdCB3aWR0aD0nMTI4JyBoZWlnaHQ9JzEyOCcgcng9JzI4JyBmaWxsPScjMEI2QjRBJy8+PGcgdHJhbnNmb3JtPSd0cmFuc2xhdGUoMTkuOCAyMC40KSBzY2FsZSgwLjY2KSc+PHBhdGggZmlsbD0nI2ZmZicgZD0nTTU4LjUsMjMuNSBhNS41LDUuNSAwIDEsMCAxMSwwIGE1LjUsNS41IDAgMSwwIC0xMSwwIFogTTYwLDI2IGg4IHY3IGgtOCBaIE02NCwzMSBDODMsMzEgOTIsNDYuNSA5Miw2NSBMOTIsNzQgQzkyLDgyIDk1LDg3LjIgMTAwLDkxIEwyOCw5MSBDMzMsODcuMiAzNiw4MiAzNiw3NCBMMzYsNjUgQzM2LDQ2LjUgNDUsMzEgNjQsMzEgWiBNMzEuMjUsODggaDY1LjUgYTUuMjUsNS4yNSAwIDAsMSA1LjI1LDUuMjUgYTUuMjUsNS4yNSAwIDAsMSAtNS4yNSw1LjI1IGgtNjUuNSBhNS4yNSw1LjI1IDAgMCwxIC01LjI1LC01LjI1IGE1LjI1LDUuMjUgMCAwLDEgNS4yNSwtNS4yNSBaIE01Ny40LDEwNy41IGE2LjYsNi42IDAgMSwwIDEzLjIsMCBhNi42LDYuNiAwIDEsMCAtMTMuMiwwIFonLz48Y2lyY2xlIGN4PSc5OScgY3k9JzMzJyByPSc5JyBmaWxsPScjNUVFMEFEJy8+PC9nPjwvc3ZnPg==">
@@ -67,6 +67,13 @@
   #login { flex:1; display:flex; flex-direction:column; justify-content:center; gap:12px; padding:0 24px; }
   #login .logo { width:48px; height:48px; font-size:24px; border-radius:14px; }
   [hidden] { display:none !important; }
+  #login .fl { font-size:14px; font-weight:600; color:var(--mid); margin:4px 0 -6px; }
+  .legal-foot { display:flex; flex-wrap:wrap; gap:8px 18px; align-items:center; justify-content:center; padding:18px 16px 28px; font-size:13px; color:#8CA298; }
+  .legal-foot nav { display:flex; gap:6px 16px; flex-wrap:wrap; }
+  .legal-foot a { color:#8CA298; text-decoration:none; }
+  .legal-foot a:hover { text-decoration:underline; }
+  .legal-foot .wj { display:inline-flex; align-items:center; gap:8px; color:rgba(255,255,255,.7); }
+  .legal-foot .wj img { height:18px; width:auto; opacity:.75; }
 </style>
 </head>
 <body>
@@ -76,10 +83,16 @@
   <span class="logo"><svg viewBox="0 0 128 128" width="64%" height="64%" aria-hidden="true"><g fill="#06120D"><circle cx="64" cy="23.5" r="5.5"/><rect x="60" y="26" width="8" height="7" rx="3.2"/><path d="M64 31C83 31 92 46.5 92 65V74C92 82 95 87.2 100 91H28C33 87.2 36 82 36 74V65C36 46.5 45 31 64 31Z"/><rect x="26" y="88" width="76" height="10.5" rx="5.25"/><circle cx="64" cy="107.5" r="6.6"/></g><circle cx="99" cy="33" r="9" fill="#0B6B4A"/></svg></span>
   <h1 style="font-size:22px; margin:6px 0 2px;">ميقات — المدير</h1>
   <p class="muted" style="margin:0 0 10px;">متابعة وتحكم عن بُعد من جوالك</p>
-  <input id="email" type="email" placeholder="البريد الإلكتروني" dir="ltr" autocomplete="username">
-  <input id="password" type="password" placeholder="كلمة المرور" dir="ltr" autocomplete="current-password">
+  <label class="fl" for="email">البريد الإلكتروني</label>
+  <input id="email" type="email" placeholder="name@school.sa" dir="ltr" autocomplete="username">
+  <label class="fl" for="password">كلمة المرور</label>
+  <input id="password" type="password" dir="ltr" autocomplete="current-password">
   <button class="btn-send" data-onclick="h1">دخول</button>
   <div class="msg" id="loginMsg"></div>
+<footer class="legal-foot">
+  <nav aria-label="روابط قانونية"><a href="/privacy.html">سياسة الخصوصية</a><a href="/terms.html">شروط الاستخدام</a><a href="https://wa.me/966541301200" rel="noopener">الدعم</a></nav>
+  <a class="wj" href="https://wajhatnuzum.com" rel="noopener"><img src="/brand/wajhat-mark-light.svg" alt="" width="34" height="18">من وجهة النظم</a>
+</footer>
 </div>
 
 <!-- App -->

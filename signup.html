@@ -26,7 +26,17 @@
   label .opt { color:var(--muted); font-weight:400; }
   input { width:100%; padding:13px; border:1px solid var(--line); border-radius:12px; font-size:15px; font-family:inherit; background:#fff; color:var(--text); }
   input:focus { outline:none; border-color:var(--green); }
-  .hp { position:absolute; left:-9999px; }
+  /* honeypot: visually hidden without a negative offset (RTL pages scrolled 10,000 px sideways — audit Q-024) */
+  .hp { position:absolute !important; width:1px !important; height:1px !important; padding:0 !important; margin:-1px !important;
+        overflow:hidden !important; clip:rect(0 0 0 0) !important; clip-path:inset(50%) !important; white-space:nowrap !important; border:0 !important; }
+  .consent { display:flex; gap:10px; align-items:flex-start; font-weight:400; font-size:14px; line-height:1.7; color:var(--muted); margin:18px 0 6px; cursor:pointer; }
+  .consent input { width:20px; height:20px; margin:3px 0 0; padding:0; flex:none; accent-color:var(--green); }
+  .legal-foot { display:flex; flex-wrap:wrap; gap:8px 18px; align-items:center; justify-content:center; padding:18px 16px 28px; font-size:13px; color:#4B5B53; }
+  .legal-foot nav { display:flex; gap:6px 16px; flex-wrap:wrap; }
+  .legal-foot a { color:#4B5B53; text-decoration:none; }
+  .legal-foot a:hover { text-decoration:underline; }
+  .legal-foot .wj { display:inline-flex; align-items:center; gap:8px; color:rgba(35,31,32,.6); }
+  .legal-foot .wj img { height:18px; width:auto; opacity:.6; }
   button { width:100%; margin-top:22px; background:var(--green); color:#fff; border:0; padding:15px; border-radius:13px; font-size:16px; font-weight:600; font-family:inherit; cursor:pointer; transition:background .15s; }
   button:hover { background:var(--green-d); } button:disabled { opacity:.6; cursor:default; }
   .msg { margin-top:14px; padding:12px 16px; border-radius:12px; font-size:14px; display:none; }
@@ -40,7 +50,7 @@
   a.link { color:var(--green-d); font-weight:600; text-decoration:none; }
   .muted { color:var(--muted); font-size:13px; }
 </style>
-<script src="wan-track.js?v=2" data-wan-product="meeqat" defer></script>
+<script src="wan-track.js?v=3" data-wan-product="meeqat" defer></script>
 </head>
 <body>
 <div class="wrap">
@@ -54,15 +64,16 @@
     <div class="feat"><span class="check">✓</span><span><b>تحكّم عن بُعد</b> — عدّل الجداول وأرسل النداءات من أي مكان.</span></div>
     <hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
 
-    <label>اسم المدرسة</label>
+    <label for="name">اسم المدرسة</label>
     <input id="name" placeholder="مثال: مدارس الرياض الأهلية" autocomplete="organization">
-    <label>البريد الإلكتروني</label>
+    <label for="email">البريد الإلكتروني</label>
     <input id="email" type="email" dir="ltr" placeholder="school@example.com" autocomplete="email">
-    <label>رقم الجوال <span class="opt">(اختياري)</span></label>
+    <label for="phone">رقم الجوال <span class="opt">(اختياري)</span></label>
     <input id="phone" type="tel" dir="ltr" placeholder="05xxxxxxxx" autocomplete="tel">
-    <label>كلمة مرور لوحة المدرسة <span class="opt">(اختياري — لإنشاء حساب دخول فورًا)</span></label>
+    <label for="password">كلمة مرور لوحة المدرسة <span class="opt">(اختياري — لإنشاء حساب دخول فورًا)</span></label>
     <input id="password" type="password" dir="ltr" placeholder="8 أحرف على الأقل" autocomplete="new-password">
-    <input class="hp" id="website" tabindex="-1" autocomplete="off" placeholder="Website">
+    <input class="hp" id="website" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+    <label class="consent" for="terms"><input type="checkbox" id="terms"><span>أوافق على <a class="link" href="/terms.html" target="_blank" rel="noopener">شروط الاستخدام</a> و<a class="link" href="/privacy.html" target="_blank" rel="noopener">سياسة الخصوصية</a>، ومنها معالجة بيانات المدرسة وطلابها نيابةً عنها.</span></label>
     <div id="captcha" style="margin:10px 0"></div>
 
     <button id="submit" data-onclick="h1">ابدأ التجربة المجانية</button>
@@ -86,6 +97,10 @@
     <p class="muted">احتفظ برمز التفعيل. للمساعدة تواصل مع مزوّد الخدمة.</p>
   </div>
 </div>
+<footer class="legal-foot">
+  <nav aria-label="روابط قانونية"><a href="/privacy.html">سياسة الخصوصية</a><a href="/terms.html">شروط الاستخدام</a><a href="https://wa.me/966541301200" rel="noopener">الدعم</a></nav>
+  <a class="wj" href="https://wajhatnuzum.com" rel="noopener"><img src="/brand/wajhat-mark-dark.svg" alt="" width="34" height="18">من وجهة النظم</a>
+</footer>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js" integrity="sha384-2zrRDgDHSYB/GN3nFW3fsZXoxEhKIr3N2h63Tc6DEOB9JJdFIu8xMJT2Cph/gBil" crossorigin="anonymous"></script>
 <script src="signup.js"></script>

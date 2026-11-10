@@ -22,11 +22,12 @@ async function submitForm() {
   if (name.length < 2) return err("أدخل اسم المدرسة");
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return err("أدخل بريدًا إلكترونيًا صحيحًا");
   if (password && password.length < 8) return err("كلمة المرور 8 أحرف على الأقل");
+  if (!document.getElementById("terms").checked) return err("وافق على شروط الاستخدام وسياسة الخصوصية للمتابعة");
   if (TURNSTILE_SITE_KEY && !turnstileToken) return err("أكمل التحقق أولًا");
   const btn = document.getElementById("submit");
   btn.disabled = true; btn.textContent = "… جارٍ الإنشاء";
   const { data, error } = await db.functions.invoke("signup", {
-    body: { name, contactEmail: email, contactPhone: phone, password, website: val("website"), turnstileToken },
+    body: { name, contactEmail: email, contactPhone: phone, password, website: val("website"), turnstileToken, acceptTerms: true, termsVersion: "2026-11" },
   });
   const e = error || data?.error;
   if (e && TURNSTILE_SITE_KEY && window.turnstile) { window.turnstile.reset("#captcha"); turnstileToken = ""; }

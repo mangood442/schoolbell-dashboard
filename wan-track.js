@@ -1,4 +1,4 @@
-/*! wan-track.js — Wajhat Al Nuzum ads tracking (gtag GA4 + Google Ads conversions). 2026-10-26 (v2: + Microsoft Clarity).
+/*! wan-track.js — Wajhat Al Nuzum ads tracking (gtag GA4 + Google Ads conversions). 2026-10-26 (v2: + Microsoft Clarity; v3 2026-11-10: deferred load).
  * Usage: <script src="/path/wan-track.js" data-wan-product="tripleqms" defer></script>
  * - Loads gtag.js (AW-18345311586 + GA4 G-EFNLMQ7WTQ); no inline script needed (strict-CSP safe).
  * - Fires "WAN - WhatsApp click" on every wa.me / api.whatsapp.com / whatsapp: link click.
@@ -23,12 +23,25 @@
 
   window.dataLayer = window.dataLayer || [];
   if (typeof window.gtag !== 'function') window.gtag = function () { window.dataLayer.push(arguments); };
-  if (!document.querySelector('script[src*="googletagmanager.com/gtag/js"]')) {
+  // v3 2026-11-10 (quality audit Q-005): gtag.js is fetched after the first interaction or 4 s after window
+  // load, whichever comes first — calls made before that wait in dataLayer, so no hit is lost.
+  var deferred = [], started = false;
+  function whenIdle(fn) { if (started) fn(); else deferred.push(fn); }
+  function startNow() {
+    if (started) return; started = true;
+    ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach(function (t) { window.removeEventListener(t, startNow, true); });
+    while (deferred.length) { try { deferred.shift()(); } catch (_) {} }
+  }
+  ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach(function (t) { window.addEventListener(t, startNow, { capture: true, passive: true }); });
+  var armTimer = function () { setTimeout(startNow, 4000); };
+  if (document.readyState === 'complete') armTimer(); else window.addEventListener('load', armTimer);
+  whenIdle(function () {
+    if (document.querySelector('script[src*="googletagmanager.com/gtag/js"]')) return;
     var g = document.createElement('script');
     g.async = true;
     g.src = 'https://www.googletagmanager.com/gtag/js?id=' + AW;
     (document.head || document.documentElement).appendChild(g);
-  }
+  });
   gtag('js', new Date());
   gtag('config', GA4);
   gtag('config', AW);
@@ -132,8 +145,7 @@
     else if (clState === 0) clLoad();
   }
   if (CL && !clOff) {
-    var clStart = function () { setTimeout(clLoad, 0); };
-    if (document.readyState === 'complete') clStart(); else window.addEventListener('load', clStart);
+    whenIdle(clLoad);
     ['pushState', 'replaceState'].forEach(function (m) {
       var orig = history[m];
       if (typeof orig !== 'function') return;
