@@ -1,0 +1,12 @@
+# meeqat.me — public pages indexable; dashboards are not (Wajhat quality standard §9)
+User-agent: *
+Allow: /$
+Allow: /signup.html
+Allow: /privacy.html
+Allow: /terms.html
+Disallow: /index.html
+Disallow: /manager.html
+Disallow: /admin.html
+Disallow: /gate.html
+Disallow: /proforma.html
+Sitemap: https://meeqat.me/sitemap.xml
