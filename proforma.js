@@ -2,7 +2,7 @@
 // a school member sees only its own invoices, a super admin sees all.
 const db = supabase.createClient("https://meeqat-api.tripleodoo.com", "sb_publishable_D0YQfRkraujKgNEVpSNKhw_YMvm2oB7");
 const SELLER = { ar: "شركة وجهة النظم", en: "Wajhat Al Nuzum", vat: "314761782600003", cr: "7054190405",
-  email: "sales@wajhatnuzum.com", phone: "+966 54 130 1200" };
+  email: "sales@wajhatnuzum.com", phone: "+966 53 531 3495" };
 const BANKS = [["البنك السعودي الأول (SAB)", "SA5345000000091083261001"], ["مصرف الراجحي", "SA3980000213608010877804"]];
 const esc = s => String(s ?? "").replace(/[&<>"'`]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "`": "&#96;" }[c]));
 const sar = n => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " SAR";
@@ -20,7 +20,7 @@ document.getElementById("printBtn").onclick = () => window.print();
   if (!inv) return fail("الفاتورة غير موجودة.");
   const [{ data: school }, { data: plan }] = await Promise.all([
     db.from("schools").select("name").eq("id", inv.school_id).maybeSingle(),
-    inv.plan_key ? db.from("plans").select("name_ar").eq("key", inv.plan_key).maybeSingle() : Promise.resolve({ data: null }),
+    inv.plan_key ? db.from("plan_catalog").select("name_ar").eq("key", inv.plan_key).maybeSingle() : Promise.resolve({ data: null }),
   ]);
   const years = Math.max(1, Math.round((inv.period_months || 12) / 12));
   const vat = inv.vat ?? Math.round(Number(inv.amount) * 15) / 100;
@@ -46,7 +46,7 @@ document.getElementById("printBtn").onclick = () => window.print();
       <div class="box"><h3>البائع / Seller</h3><div>${SELLER.ar} — ${SELLER.en}<br>${SELLER.email}<br><bdi dir="ltr" class="mono">${SELLER.phone}</bdi></div></div>
     </div>
     <table><thead><tr><th>#</th><th>البيان</th><th>الكمية</th><th>سعر الوحدة</th><th>المبلغ</th></tr></thead><tbody>
-      <tr><td>1</td><td>اشتراك ميقات — باقة ${esc(plan?.name_ar || inv.plan_key || "")} — ${years === 1 ? "سنة واحدة" : years === 2 ? "سنتان" : years + " سنوات"} لمدرسة واحدة<br><span style="color:#5E6F66;font-size:12px">Meeqat school-bell subscription — ${esc(inv.plan_key || "")} plan, ${years} year(s)</span></td>
+      <tr><td>1</td><td>اشتراك ميقات${plan?.name_ar || inv.plan_key ? " — باقة " + esc(plan?.name_ar || inv.plan_key) : ""} — ${years === 1 ? "سنة واحدة" : years === 2 ? "سنتان" : years + " سنوات"} لمدرسة واحدة<br><span style="color:#5E6F66;font-size:12px">Meeqat school-bell subscription — ${esc(inv.plan_key || "")} plan, ${years} year(s)</span></td>
         <td class="n">${inv.period_months >= 12 ? years : 1}</td><td class="n">${sar(unit)}</td><td class="n">${sar(inv.amount)}</td></tr>
       <tr class="tot"><td colspan="4">المجموع قبل الضريبة / Subtotal</td><td class="n">${sar(inv.amount)}</td></tr>
       <tr class="tot"><td colspan="4">ضريبة القيمة المضافة 15% / VAT</td><td class="n">${sar(vat)}</td></tr>

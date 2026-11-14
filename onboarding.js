@@ -1,11 +1,15 @@
 // ميقات v17 — «ابدأ هنا» (first 10 minutes) + «الاشتراك والدفع بالتحويل البنكي».
 // Loaded after index.js / pickup-admin.js and shares their globals (db, schoolId, me, myRole, config,
 // esc, show, _H, showTab, saveConfig, renderSchedules, sendBell). Data comes from the `billing` edge
-// function (state/create/cancel/receipt). Prices appear only here, after login.
+// function (state/cancel/receipt). Meeqat has NO list prices (2026-11-13): schools see plan names and
+// request a custom quote on WhatsApp; the provider issues the invoice and the school pays it here.
 
 let BILL = null;          // last billing state
 const obCanWrite = () => myRole === "admin" || myRole === "manager";
 const obHiddenKey = () => "mq_starthere_hidden_" + schoolId;
+const MQ_WA = "966535313495";   // company WhatsApp (sales + support)
+const MQ_QUOTE_TXT = "السعر حسب عرض السعر المخصص — تواصل معنا";
+const waLink = txt => `https://wa.me/${MQ_WA}?text=${encodeURIComponent(txt)}`;
 const fmtSAR = n => Number(n || 0).toLocaleString("ar-SA", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + " ر.س";
 const daysLeft = d => d ? Math.floor((Date.parse(d + "T23:59:59+03:00") - Date.now()) / 86400000) : null;
 
@@ -31,7 +35,7 @@ function renderTrialBanner() {
   const el = document.getElementById("trialBanner"); const s = BILL?.school;
   if (!s) { el.style.display = "none"; return; }
   const left = daysLeft(s.subscription_until);
-  const pending = (BILL.invoices || []).find(i => i.status === "pending" && i.source === "school");
+  const pending = (BILL.invoices || []).find(i => i.status === "pending");
   let cls = "ok", txt = "";
   if (s.is_trial) {
     if (left !== null && left < 0) { cls = "bad"; txt = `انتهت التجربة المجانية بتاريخ ${esc(s.subscription_until)} — اشترك ليستمر الجرس دون انقطاع.`; }
@@ -39,7 +43,7 @@ function renderTrialBanner() {
   } else if (left !== null && left <= 14) {
     cls = left < 0 ? "bad" : "warn"; txt = left < 0 ? `انتهى الاشتراك بتاريخ ${esc(s.subscription_until)}.` : `ينتهي الاشتراك بعد ${left} يومًا (${esc(s.subscription_until)}).`;
   } else { el.style.display = "none"; return; }
-  if (pending) txt += pending.receipt_at ? " · إيصال التحويل قيد المراجعة." : ` · لديك فاتورة مبدئية ${esc(pending.number || "")} بانتظار التحويل.`;
+  if (pending) txt += pending.receipt_at ? " · إيصال التحويل قيد المراجعة." : ` · لديك فاتورة ${esc(pending.number || "")} بانتظار التحويل.`;
   el.className = "trial-banner " + cls;
   el.innerHTML = `<span style="flex:1">${txt}</span><button class="primary sm" data-onclick="o1">💳 الاشتراك والدفع</button>`;
   el.style.display = "flex";
@@ -57,10 +61,10 @@ function renderStartHere() {
     { k: "device", t: "اربط التابلت", d: BILL.activationCode
         ? `ثبّت تطبيق ميقات على تابلت أندرويد، ثم من «الإعدادات ← الربط السحابي» أدخل الرمز: <b class="mono code-chip" dir="ltr">${esc(BILL.activationCode)}</b>`
         : "ثبّت تطبيق ميقات على تابلت أندرويد وأدخل رمز التفعيل من «الإعدادات ← الربط السحابي».",
-      a: `<a class="ghost sm btnlink" target="_blank" rel="noopener" href="https://wa.me/966541301200?text=${encodeURIComponent("أحتاج رابط تطبيق ميقات للتابلت — " + (BILL.school?.name || ""))}">📲 اطلب رابط التطبيق</a> <button class="ghost sm" data-onclick="h6">📱 الأجهزة</button>` },
+      a: `<a class="ghost sm btnlink" target="_blank" rel="noopener" href="/download.html">📲 تنزيل تطبيق التابلت</a> <button class="ghost sm" data-onclick="h6">📱 الأجهزة</button>` },
     { k: "bell", t: "جرّب الجرس الآن", d: p.device ? "أرسل جرسًا فوريًا وتأكد أن الصوت خرج من السماعة." : "بعد ربط التابلت أرسل جرسًا تجريبيًا من هنا.",
       a: obCanWrite() ? `<button class="primary sm" data-onclick="o3" ${p.device ? "" : "disabled"}>🔔 جرّب الجرس الآن</button>` : "" },
-    { k: "plan", t: "اختر باقتك وادفع بالتحويل", d: "فاتورة مبدئية فورية، تحويل بنكي، ثم ارفع الإيصال — ويُمدَّد الاشتراك بعد التأكيد.",
+    { k: "plan", t: "اطلب عرض سعر لمدرستك", d: "نرسل لك عرض سعر حسب حجم المدرسة وعدد البوابات والأجهزة، ثم فاتورة تدفعها بالتحويل وترفع الإيصال هنا.",
       a: `<button class="ghost sm" data-onclick="o1">💳 الاشتراك والدفع</button>` },
   ];
   const done = steps.filter(s => p[s.k]).length;
@@ -112,15 +116,14 @@ async function testBell() {
 }
 
 // ─── Billing tab ─────────────────────────────────────────────────────────────
-let obPlan = null, obYears = 1;
 function renderBilling() {
   const box = document.getElementById("billingBox");
   if (!BILL) { box.innerHTML = '<p class="muted">جارٍ التحميل…</p>'; onboardingRefresh(); return; }
   const s = BILL.school, plans = BILL.plans || [], invs = BILL.invoices || [];
   const planName = k => (plans.find(p => p.key === k) || {}).name_ar || k || "—";
   const left = daysLeft(s.subscription_until);
-  const open = invs.find(i => i.status === "pending" && i.source === "school");
-  if (!obPlan) obPlan = (plans.find(p => p.key === s.plan) || plans[0] || {}).key;
+  // Any pending invoice — provider-issued (source=admin) or an older self-service one (source=school).
+  const open = invs.find(i => i.status === "pending");
 
   const statusCard = `<div class="subtle row" style="margin-bottom:16px">
     <span>الباقة الحالية: <b>${esc(planName(s.plan))}</b>${s.is_trial ? ' <span class="chip">تجربة مجانية</span>' : ""}</span>
@@ -131,13 +134,13 @@ function renderBilling() {
     const banks = (BILL.bank || []).map(b => `<tr><td>${esc(b.bank)}</td><td class="mono" dir="ltr">${esc(b.iban)}</td>
       <td><button class="ghost sm" data-onclick="o7" data-o7a0="${esc(b.iban)}">نسخ</button></td></tr>`).join("");
     openCard = `<div class="card ob-open">
-      <div class="row"><h2 style="flex:1;margin:0">الفاتورة المبدئية <span class="mono" dir="ltr">${esc(open.number || "#" + open.id)}</span></h2>
+      <div class="row"><h2 style="flex:1;margin:0">الفاتورة <span class="mono" dir="ltr">${esc(open.number || "#" + open.id)}</span></h2>
         <a class="primary sm btnlink" target="_blank" rel="noopener" href="./proforma.html?id=${open.id}">📄 عرض / تحميل PDF</a></div>
-      <p class="muted" style="margin:6px 0 12px">${esc(open.buyer_name || "")} — ${esc(planName(open.plan_key))} لمدة ${yearsTxt(open.period_months / 12)}</p>
+      <p class="muted" style="margin:6px 0 12px">${esc(open.buyer_name || s.name || "")}${open.plan_key ? " — " + esc(planName(open.plan_key)) : ""} لمدة ${periodTxt(open.period_months)}</p>
       <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
         <div class="kpi"><div class="l">المبلغ قبل الضريبة</div><div class="n" style="font-size:20px">${fmtSAR(open.amount)}</div></div>
-        <div class="kpi"><div class="l">ضريبة القيمة المضافة 15%</div><div class="n" style="font-size:20px">${fmtSAR(open.vat)}</div></div>
-        <div class="kpi"><div class="l">الإجمالي المستحق</div><div class="n good" style="font-size:20px">${fmtSAR(open.total)}</div></div></div>
+        <div class="kpi"><div class="l">ضريبة القيمة المضافة 15%</div><div class="n" style="font-size:20px">${fmtSAR(invVat(open))}</div></div>
+        <div class="kpi"><div class="l">الإجمالي المستحق</div><div class="n good" style="font-size:20px">${fmtSAR(invTotal(open))}</div></div></div>
       <h3>1) حوّل المبلغ إلى أحد حسابات ${esc(BILL.seller?.name_ar || "")}</h3>
       <table><thead><tr><th>البنك</th><th>الآيبان</th><th></th></tr></thead><tbody>${banks}</tbody></table>
       <p class="muted">اكتب رقم الفاتورة <b class="mono" dir="ltr">${esc(open.number || "")}</b> في وصف التحويل.</p>
@@ -146,37 +149,29 @@ function renderBilling() {
         ? `<div class="msg ok" style="display:block">✓ استلمنا الإيصال (${fmt(open.receipt_at)}). نراجعه ونمدد الاشتراك خلال يوم عمل، وتصلك رسالة بالتأكيد.</div>
            ${obCanWrite() ? `<details><summary class="muted" style="cursor:pointer">رفع إيصال آخر</summary>${receiptForm(open)}</details>` : ""}`
         : (obCanWrite() ? receiptForm(open) : '<p class="muted">يرفع مدير المدرسة الإيصال.</p>')}
-      ${obCanWrite() && !open.receipt_at ? `<p style="margin-top:12px"><button class="ghost sm danger" data-onclick="o6" data-o6a0="${open.id}">إلغاء هذه الفاتورة</button></p>` : ""}
+      ${obCanWrite() && !open.receipt_at && open.source === "school" ? `<p style="margin-top:12px"><button class="ghost sm danger" data-onclick="o6" data-o6a0="${open.id}">إلغاء هذه الفاتورة</button></p>` : ""}
     </div>`;
   }
 
+  const quoteMsg = k => `السلام عليكم، أرغب بعرض سعر لميقات${k ? " — باقة " + planName(k) : ""} لمدرسة: ${s.name || ""}`;
   const planCards = plans.map(p => `
-    <label class="ob-plan ${p.key === obPlan ? "sel" : ""}"><input type="radio" name="obPlan" value="${esc(p.key)}" ${p.key === obPlan ? "checked" : ""} data-onchange="o4">
-      <b style="font-size:17px">${esc(p.name_ar)}</b>
-      <div class="ob-price">${fmtSAR(p.price)} <span class="muted">/ سنة لكل مدرسة + الضريبة</span></div>
-      <ul>${(p.features || []).map(f => `<li>${esc(f)}</li>`).join("")}</ul></label>`).join("");
-  const sel = plans.find(p => p.key === obPlan);
-  const sub = sel ? Number(sel.price) * obYears : 0, vat = Math.round(sub * 15) / 100;
-  const form = obCanWrite() ? `
-    <div class="card"><h2>${open ? "إصدار فاتورة جديدة (تستبدل الحالية)" : "اختر باقتك"}</h2>
+    <div class="ob-plan ${p.key === s.plan ? "sel" : ""}">
+      <b style="font-size:17px">${esc(p.name_ar)}</b>${p.key === s.plan ? ' <span class="chip">باقتك الحالية</span>' : ""}
+      <div class="ob-price ob-quote">${MQ_QUOTE_TXT}</div>
+      <ul>${(p.features || []).map(f => `<li>${esc(f)}</li>`).join("")}</ul>
+      <a class="ghost sm btnlink" target="_blank" rel="noopener" href="${waLink(quoteMsg(p.key))}">اطلب عرض سعر لهذه الباقة</a></div>`).join("");
+  const form = `
+    <div class="card"><h2>الباقات</h2>
+      <p class="muted" style="margin:0 0 12px">الأسعار حسب حجم المدرسة وعدد البوابات والأجهزة — نرسل لك عرض سعر مخصصًا، ثم فاتورة تظهر هنا لتدفعها بالتحويل البنكي وترفع الإيصال.</p>
       <div class="ob-plans">${planCards}</div>
-      <div class="row" style="margin-top:14px">
-        <label class="muted">المدة</label>
-        <select id="obYears" data-onchange="o5">${[1, 2, 3].slice(0, BILL.maxYears || 3).map(y => `<option value="${y}" ${y === obYears ? "selected" : ""}>${y === 1 ? "سنة واحدة" : y === 2 ? "سنتان" : y + " سنوات"}</option>`).join("")}</select>
-        <span style="flex:1"></span>
-        <span>الإجمالي شامل الضريبة: <b class="mono">${fmtSAR(sub + vat)}</b> <span class="muted">(${fmtSAR(sub)} + ضريبة ${fmtSAR(vat)})</span></span>
-      </div>
-      <h3>بيانات الفاتورة</h3>
-      <div class="row"><input id="obBuyer" style="flex:2;min-width:220px" maxlength="150" placeholder="اسم المنشأة كما يظهر في الفاتورة" value="${esc(s.name || "")}">
-        <input id="obVat" style="flex:1;min-width:170px" dir="ltr" maxlength="15" placeholder="الرقم الضريبي (اختياري)"></div>
-      <div class="row" style="margin-top:8px"><input id="obAddr" style="flex:1" maxlength="250" placeholder="العنوان الوطني / المدينة (اختياري)"></div>
-      <p style="margin-top:14px"><button class="primary" data-onclick="o8">📄 إصدار الفاتورة المبدئية</button>
-        <span class="muted"> الدفع بالتحويل البنكي فقط حاليًا.</span></p>
-      <div class="msg" id="obMsg"></div></div>` : '<p class="muted">إدارة الاشتراك متاحة لمدير المدرسة.</p>';
+      <div class="ob-cta">
+        <div style="flex:1"><b>${MQ_QUOTE_TXT}</b><div class="muted">واتساب الشركة: <bdi dir="ltr" class="mono">+966 53 531 3495</bdi></div></div>
+        <a class="primary btnlink" target="_blank" rel="noopener" href="${waLink(quoteMsg(""))}">💬 اطلب عرض سعر عبر واتساب</a>
+      </div></div>`;
 
   const hist = invs.length ? `<div class="card"><h2>سجل الفواتير</h2><table><thead><tr><th>الرقم</th><th>الباقة</th><th>الإجمالي</th><th>الحالة</th><th>التاريخ</th><th></th></tr></thead><tbody>
     ${invs.map(i => `<tr><td class="mono" dir="ltr">${esc(i.number || "#" + i.id)}</td><td>${esc(planName(i.plan_key))}</td>
-      <td class="mono">${fmtSAR(i.total ?? i.amount)}</td><td>${invStatus(i)}</td><td class="mono" dir="ltr">${fmt(i.created_at)}</td>
+      <td class="mono">${fmtSAR(invTotal(i))}</td><td>${invStatus(i)}</td><td class="mono" dir="ltr">${fmt(i.created_at)}</td>
       <td>${i.number ? `<a class="ghost sm btnlink" target="_blank" rel="noopener" href="./proforma.html?id=${i.id}">📄</a>` : ""}</td></tr>`).join("")}
     </tbody></table></div>` : "";
 
@@ -184,9 +179,14 @@ function renderBilling() {
   box.innerHTML = statusCard + openCard + form + hist + reshow;
 }
 function yearsTxt(y) { return y === 1 ? "سنة واحدة" : y === 2 ? "سنتين" : y + " سنوات"; }
+function periodTxt(m) { m = Number(m) || 12; return m % 12 === 0 ? yearsTxt(m / 12) : m === 1 ? "شهر واحد" : m === 2 ? "شهرين" : m + " أشهر"; }
+// Older provider-issued invoices carry only `amount` (excl. VAT): derive VAT/total for display.
+const invVat = i => i.vat != null ? Number(i.vat) : Math.round(Number(i.amount || 0) * 15) / 100;
+const invTotal = i => i.total != null ? Number(i.total) : Number(i.amount || 0) + invVat(i);
 function receiptForm(inv) {
   return `<div class="row" style="margin-top:6px">
-    <input type="file" id="obFile" accept="application/pdf,image/jpeg,image/png,image/webp">
+    <label class="ob-file">📎 <span id="obFileName">اختر ملف الإيصال</span>
+      <input type="file" id="obFile" accept="application/pdf,image/jpeg,image/png,image/webp" data-onchange="o12" aria-label="ملف إيصال التحويل"></label>
     <input id="obNote" style="flex:1;min-width:180px" maxlength="300" placeholder="ملاحظة (اختياري): اسم المحوِّل، البنك…">
     <button class="primary sm" data-onclick="o11" data-o11a0="${inv.id}">⬆ رفع الإيصال</button></div>
     <p class="muted">PDF أو صورة حتى 5MB.</p><div class="msg" id="obRcptMsg"></div>`;
@@ -196,18 +196,6 @@ function invStatus(i) {
   if (i.status === "cancelled") return '<span class="muted">ملغاة</span>';
   if (i.status === "rejected") return `<span style="color:var(--red)">مرفوضة</span>${i.decided_note ? ` <span class="muted">${esc(i.decided_note)}</span>` : ""}`;
   return i.receipt_at ? '<span style="color:var(--amber)">الإيصال قيد المراجعة</span>' : '<span style="color:var(--amber)">بانتظار التحويل</span>';
-}
-async function createProforma() {
-  const btn = event?.target; if (btn) btn.disabled = true;
-  try {
-    const r = await obCall({ action: "create", plan: obPlan, years: obYears,
-      buyerName: document.getElementById("obBuyer").value, buyerVat: document.getElementById("obVat").value,
-      buyerAddress: document.getElementById("obAddr").value });
-    await onboardingRefresh(); renderBilling();
-    show("msg", "✓ صدرت الفاتورة المبدئية " + (r.invoice?.number || "") + " — حوّل المبلغ ثم ارفع الإيصال.");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  } catch (e) { show("obMsg", e.message, true); }
-  finally { if (btn) btn.disabled = false; }
 }
 async function uploadReceipt(id) {
   const f = document.getElementById("obFile")?.files?.[0];
@@ -230,14 +218,12 @@ Object.assign(_H, {
   o1() { showTab("billing"); },
   o2() { fillDemoSchedule(); },
   o3() { testBell(); },
-  o4() { obPlan = this.value; renderBilling(); },
-  o5() { obYears = +this.value || 1; renderBilling(); },
   o6() { cancelProforma(+this.dataset.o6a0); },
   o7() { navigator.clipboard?.writeText(this.dataset.o7a0); this.textContent = "✓ نُسخ"; },
-  o8() { createProforma(); },
   o9() { localStorage.setItem(obHiddenKey(), "1"); renderStartHere(); },
   o10() { localStorage.removeItem(obHiddenKey()); renderStartHere(); renderBilling(); window.scrollTo({ top: 0 }); },
   o11() { uploadReceipt(+this.dataset.o11a0); },
+  o12() { const f = this.files?.[0]; document.getElementById("obFileName").textContent = f ? `${f.name} (${Math.max(1, Math.round(f.size / 1024))} KB)` : "اختر ملف الإيصال"; },
 });
 
 // If index.js finished init() before this file was parsed, load the state now.

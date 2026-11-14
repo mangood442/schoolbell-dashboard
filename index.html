@@ -112,7 +112,14 @@
   .ob-plan input { accent-color:var(--green); margin-inline-end:6px; }
   .ob-plan ul { margin:8px 0 0; padding-inline-start:18px; color:var(--mid); font-size:14px; }
   .ob-price { font-size:20px; font-weight:700; color:var(--green-dark); margin-top:6px; }
+  .ob-plan { cursor:default; }
+  .ob-plan a.btnlink { margin-top:10px; }
+  .ob-quote { font-size:15px; font-weight:600; line-height:1.6; }
+  .ob-cta { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-top:16px; padding:14px 16px; border-radius:14px; background:var(--green-container); border:1px solid var(--green-border); }
   .ob-open { border-color:var(--green-border); }
+  .ob-file { position:relative; display:inline-flex; align-items:center; gap:8px; border:1px dashed var(--green-border); border-radius:10px; padding:6px 12px; background:#fff; cursor:pointer; font-size:14px; }
+  .ob-file input { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+  .ob-file:focus-within { outline:3px solid #5EE0AD; outline-offset:2px; }
   button[disabled] { opacity:.5; cursor:not-allowed; }
 </style>
 </head>
@@ -308,7 +315,7 @@
     <!-- Billing (ميقات v17) -->
     <section id="tab-billing" style="display:none">
       <div class="card"><h2 style="margin-bottom:4px">الاشتراك والدفع بالتحويل البنكي</h2>
-        <p class="muted" style="margin:0">اختر الباقة ← حمّل الفاتورة المبدئية ← حوّل المبلغ ← ارفع الإيصال. نؤكد ونمدد الاشتراك خلال يوم عمل دون أي توقف للجرس.</p></div>
+        <p class="muted" style="margin:0">اطلب عرض سعر مخصصًا ← تصلك الفاتورة هنا ← حوّل المبلغ ← ارفع الإيصال. نؤكد ونمدد الاشتراك خلال يوم عمل دون أي توقف للجرس.</p></div>
       <div id="billingBox"></div>
     </section>
 
@@ -336,7 +343,7 @@
   </div>
 </main>
 <footer class="legal-foot">
-  <nav aria-label="روابط قانونية"><a href="/privacy.html">سياسة الخصوصية</a><a href="/terms.html">شروط الاستخدام</a><a href="https://wa.me/966541301200" rel="noopener">الدعم</a></nav>
+  <nav aria-label="روابط قانونية"><a href="/privacy.html">سياسة الخصوصية</a><a href="/terms.html">شروط الاستخدام</a><a href="https://wa.me/966535313495" rel="noopener">الدعم</a></nav>
   <a class="wj" href="https://wajhatnuzum.com" rel="noopener"><img src="/brand/wajhat-mark-dark.svg" alt="" width="34" height="18">من وجهة النظم</a>
 </footer>
 

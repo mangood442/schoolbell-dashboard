@@ -361,7 +361,7 @@ function renderDetail() {
     <div class="card">
       <div class="row" style="margin-bottom:12px">
         <h3 style="flex:1;margin:0">الفواتير</h3>
-        <input id="dAmount" type="number" placeholder="المبلغ" style="width:100px">
+        <input id="dAmount" type="number" min="0" step="0.01" placeholder="المبلغ قبل الضريبة" aria-label="المبلغ قبل الضريبة (حسب عرض السعر)" style="width:160px">
         <select id="dMonths"><option value="12">سنة</option><option value="6">6 أشهر</option><option value="3">3 أشهر</option><option value="1">شهر</option></select>
         <button class="primary sm" data-onclick="h40">+ فاتورة</button>
       </div>
@@ -577,10 +577,20 @@ async function refreshCmds() {
 }
 
 // ── Invoices (detail) ──
+// Provider-issued invoice from the school's custom quote (Meeqat has no list prices since 2026-11-13).
+// The amount typed by the provider is EXCL. VAT; VAT/total are stored so the school's billing tab and
+// pro-forma show the exact figures. plan_key = the school's current plan (mark_invoice_paid keeps it).
+function providerInvoice(sc, amount, months) {
+  const r2 = n => Math.round(n * 100) / 100;
+  const vat = r2(amount * 0.15);
+  return { school_id: sc.id, amount: r2(amount), vat, total: r2(amount + vat), currency: "SAR", period_months: months,
+    plan_key: sc.plan || null, buyer_name: sc.name || null, source: "admin",
+    note: "عرض سعر مخصص" + (sc.plan ? " — " + planName(sc.plan) : "") };
+}
 async function createInvoiceFor() {
   const amount = +document.getElementById("dAmount").value; if(!amount)return;
   const months = +document.getElementById("dMonths").value;
-  const { error } = await db.from("invoices").insert({ school_id:cur.id, amount, period_months:months });
+  const { error } = await db.from("invoices").insert(providerInvoice(cur, amount, months));
   if (error) return show("msg","فشل: "+error.message,true);
   await loadAll(); renderDetail(); show("msg","✓ أُنشئت الفاتورة");
 }
@@ -625,7 +635,9 @@ async function rejectInvoice(id) {
 }
 async function createInvoice() {
   const amount=+document.getElementById("invAmount").value; if(!amount)return;
-  const { error } = await db.from("invoices").insert({ school_id:document.getElementById("invSchool").value, amount, period_months:+document.getElementById("invMonths").value });
+  const sc = schools.find(x=>x.id===document.getElementById("invSchool").value);
+  if (!sc) return;
+  const { error } = await db.from("invoices").insert(providerInvoice(sc, amount, +document.getElementById("invMonths").value));
   if(error) return show("msg","فشل: "+error.message,true);
   await loadAll(); loadInvoices(); show("msg","✓ أُنشئت الفاتورة");
 }

@@ -176,7 +176,7 @@
         <div class="row" style="margin-bottom:14px">
           <h2 style="flex:1">الفواتير</h2>
           <select id="invSchool"></select>
-          <input id="invAmount" type="number" placeholder="المبلغ" style="width:110px">
+          <input id="invAmount" type="number" min="0" step="0.01" placeholder="المبلغ قبل الضريبة" aria-label="المبلغ قبل الضريبة (حسب عرض السعر)" style="width:160px">
           <select id="invMonths"><option value="12">سنة</option><option value="6">6 أشهر</option><option value="3">3 أشهر</option><option value="1">شهر</option></select>
           <button class="primary" data-onclick="h14">+ فاتورة</button>
         </div>
