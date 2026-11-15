@@ -81,6 +81,7 @@ async function init() {
   await loadConfig();
   loadLogs(); loadDevices(); loadCommands();
   if (typeof onboardingRefresh === "function") onboardingRefresh();   // ميقات v17: «ابدأ هنا» + الاشتراك
+  if (typeof proInit === "function") proInit();                       // «ميقات برو» (plan feature `pro`)
 }
 
 document.getElementById("logoutBtn").onclick = async () => { await db.auth.signOut(); location.reload(); };
@@ -254,6 +255,7 @@ function renderEvents() {
       td(numInp(Math.round((e.volume ?? 1) * 100), v => e.volume = Math.min(100, Math.max(0, +v || 0)) / 100, 60)),
       td(checkbox("", e.enabled !== false, v => e.enabled = v)),
       td(deviceActionsBtn(e)),
+      ...(window.PRO_ON && typeof proTargetCell === "function" ? [td(proTargetCell(e))] : []),   // «ميقات برو»
       td(delBtn(() => { s.events.splice(i, 1); renderEvents(); })),
     );
     body.appendChild(tr);
@@ -464,8 +466,10 @@ function importConfig(file) {
 // ─── UI helpers ─────────────────────────────────────────────────────────────
 function showTab(name) {
   document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
-  ["schedules", "reports", "logs", "announce", "devices", "sounds", "smart", "students", "pickup", "notices", "billing", "account"].forEach(t =>
-    document.getElementById("tab-" + t).style.display = t === name ? "block" : "none");
+  ["schedules", "reports", "logs", "announce", "devices", "sounds", "smart", "students", "pickup", "notices", "billing", "account",
+   "pa_zones", "pa_devices", "pa_sched", "pa_emergency", "pa_streams", "pa_inputs"].forEach(t => {   // pa_* = «ميقات برو»
+    const el = document.getElementById("tab-" + t); if (el) el.style.display = t === name ? "block" : "none"; });
+  if (typeof proShowTab === "function") proShowTab(name);
   if (name === "reports") loadReports();
   if (name === "logs") loadLogs();
   if (name === "devices") loadDevices();

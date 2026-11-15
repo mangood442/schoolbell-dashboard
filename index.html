@@ -121,6 +121,52 @@
   .ob-file input { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
   .ob-file:focus-within { outline:3px solid #5EE0AD; outline-offset:2px; }
   button[disabled] { opacity:.5; cursor:not-allowed; }
+  /* «ميقات برو» */
+  .pro-only { }
+  .badge { display:inline-block; font-size:12px; font-weight:600; background:var(--green-container); color:var(--green-dark); border:1px solid var(--green-border); border-radius:999px; padding:2px 10px; vertical-align:middle; }
+  .tbl-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .tbl-wrap table { min-width:760px; }
+  .pro-state { padding:22px; border:1px dashed var(--line); border-radius:14px; text-align:center; color:var(--muted); background:#FAFCFB; }
+  .pro-state.err { color:var(--red); border-color:#EBC4BF; background:#FDF6F5; }
+  .spin { display:inline-block; width:16px; height:16px; border:2px solid var(--green-border); border-top-color:var(--green); border-radius:50%; animation:spin .8s linear infinite; vertical-align:middle; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .pro-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; }
+  .pro-card { border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin-bottom:10px; background:#fff; }
+  .tp-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .tp-chip { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:999px; padding:5px 12px; font-size:14px; cursor:pointer; background:#fff; }
+  .tp-chip input { accent-color:var(--green); }
+  .tp-all { background:var(--green-container); border-color:var(--green-border); font-weight:600; }
+  .target-btn { white-space:nowrap; max-width:260px; overflow:hidden; text-overflow:ellipsis; }
+  hr.sep { border:none; border-top:1px solid var(--line); margin:20px 0; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-inline-end:4px; vertical-align:middle; }
+  .dot-on { background:#18A058; box-shadow:0 0 0 3px #D8F3E4; } .dot-off { background:var(--red); } .dot-na { background:#B8C4BE; }
+  #proDialog { position:fixed; inset:0; background:rgba(15,26,22,.45); display:none; align-items:center; justify-content:center; z-index:50; padding:16px; }
+  .pro-modal { background:#fff; border-radius:18px; padding:22px; width:min(560px,100%); max-height:90vh; overflow:auto; box-shadow:0 20px 60px rgba(0,0,0,.25); }
+  .pro-modal.danger { border-top:6px solid var(--red); }
+  .pro-modal .fl { display:block; font-weight:600; margin:10px 0 6px; }
+  button.danger-fill { background:var(--red); } button.danger-fill:hover { background:#A2301F; }
+  button.big { padding:14px 26px; font-size:17px; }
+  .preset { border:1px solid var(--line); border-radius:12px; padding:10px 16px; cursor:pointer; background:#fff; }
+  .preset.sel { border-color:var(--red); box-shadow:0 0 0 3px #FBE3E0; font-weight:600; }
+  .preset input { accent-color:var(--red); }
+  .em-active { display:flex; align-items:center; gap:16px; flex-wrap:wrap; justify-content:space-between; padding:16px; border-radius:14px; background:#FDECEA; border:1px solid #EBC4BF; color:var(--red); }
+  #proEmergencyBanner { display:none; align-items:center; gap:10px; padding:12px 16px; border-radius:14px; margin-bottom:14px; background:var(--red); color:#fff; }
+  #proEmergencyBanner .ghost { background:#fff; }
+  .pulse { width:12px; height:12px; border-radius:50%; background:#fff; animation:pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity:.25; } }
+  code.secret { background:#F4F6F5; border-radius:8px; padding:2px 8px; word-break:break-all; }
+  .small { font-size:12px; line-height:1.7; }
+  .shift-card input[type=time] { width:110px; }
+  input[type=range] { accent-color:var(--green); width:110px; vertical-align:middle; }
+  .switch { white-space:nowrap; }
+  #paZonesBox td input:not([type]), #paDevicesBox td input:not([type]) { width:170px; }
+  #paZonesBox td, #paDevicesBox td { padding:10px 6px; }
+  @media (max-width: 760px) {
+    main { padding:16px 12px; } header { padding:12px 14px; }
+    .tabs { flex-wrap:nowrap; overflow-x:auto; padding-bottom:6px; } .tabs button { white-space:nowrap; padding:9px 14px; }
+    .card { padding:16px; } .row > input, .row > select { min-width:0 !important; max-width:100%; }
+    button.big { width:100%; }
+  }
 </style>
 </head>
 <body>
@@ -150,6 +196,7 @@
   <!-- App -->
   <div id="app" style="display:none">
     <div id="trialBanner" class="trial-banner"></div>
+    <div id="proEmergencyBanner" role="alert"></div>
     <div id="startHere" class="card" style="display:none"></div>
     <div class="tabs">
       <button data-tab="schedules" class="active" data-onclick="h2">📅 الجداول</button>
@@ -162,6 +209,12 @@
       <button data-tab="students" data-onclick="h54">👨‍👩‍👧 الطلاب وأولياء الأمور</button>
       <button data-tab="pickup" data-onclick="h55">🚗 إعدادات الاستلام</button>
       <button data-tab="notices" data-onclick="h56">📣 التعاميم</button>
+      <button data-tab="pa_zones" class="pro-only" style="display:none" data-onclick="x0">🗺️ المناطق والمجموعات</button>
+      <button data-tab="pa_devices" class="pro-only" style="display:none" data-onclick="x0">🔊 السماعات والأجهزة</button>
+      <button data-tab="pa_sched" class="pro-only" style="display:none" data-onclick="x0">⏱️ جداول المناطق</button>
+      <button data-tab="pa_emergency" class="pro-only" style="display:none" data-onclick="x0">🚨 الطوارئ</button>
+      <button data-tab="pa_streams" class="pro-only" style="display:none" data-onclick="x0">📻 البث المستمر</button>
+      <button data-tab="pa_inputs" class="pro-only" style="display:none" data-onclick="x0">🔥 مداخل الإنذار</button>
       <button data-tab="billing" data-onclick="o1">💳 الاشتراك</button>
       <button data-tab="account" data-onclick="h9">👤 حسابي</button>
     </div>
@@ -185,7 +238,7 @@
       <div id="schedMeta" class="row" style="margin-bottom:10px"></div>
       <table id="eventsTable">
         <thead><tr>
-          <th>الوقت</th><th>الاسم</th><th>المدة (د)</th><th>الأيام</th><th>النغمة</th><th>الصوت %</th><th>مفعّل</th><th>أجهزة</th><th></th>
+          <th>الوقت</th><th>الاسم</th><th>المدة (د)</th><th>الأيام</th><th>النغمة</th><th>الصوت %</th><th>مفعّل</th><th>أجهزة</th><th id="eventsTargetTh" style="display:none">المناطق</th><th></th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -312,6 +365,16 @@
       <div id="ntList"></div>
     </section>
 
+    <!-- «ميقات برو» -->
+    <section id="tab-pa_zones" class="card" style="display:none"><div id="paZonesBox"></div></section>
+    <section id="tab-pa_devices" style="display:none"><div class="card" id="paDevicesBox"></div></section>
+    <section id="tab-pa_sched" class="card" style="display:none"><div id="paSchedBox"></div></section>
+    <section id="tab-pa_emergency" style="display:none">
+      <div class="card"><h2>إطلاق الطوارئ عن بُعد</h2><div id="paEmergencyCtl"></div></div>
+      <div class="card"><div class="row" style="margin-bottom:8px"><h2 style="flex:1;margin:0">سجل الطوارئ</h2><button class="ghost" data-onclick="x1">تحديث</button></div><div id="paEmergencyLog"></div></div>
+    </section>
+    <section id="tab-pa_streams" class="card" style="display:none"><div id="paStreamsBox"></div></section>
+    <section id="tab-pa_inputs" class="card" style="display:none"><div id="paInputsBox"></div></section>
     <!-- Billing (ميقات v17) -->
     <section id="tab-billing" style="display:none">
       <div class="card"><h2 style="margin-bottom:4px">الاشتراك والدفع بالتحويل البنكي</h2>
@@ -342,6 +405,7 @@
     </section>
   </div>
 </main>
+<div id="proDialog"></div>
 <footer class="legal-foot">
   <nav aria-label="روابط قانونية"><a href="/privacy.html">سياسة الخصوصية</a><a href="/terms.html">شروط الاستخدام</a><a href="https://wa.me/966535313495" rel="noopener">الدعم</a></nav>
   <a class="wj" href="https://wajhatnuzum.com" rel="noopener"><img src="/brand/wajhat-mark-dark.svg" alt="" width="34" height="18">من وجهة النظم</a>
@@ -351,5 +415,6 @@
 <script src="index.js?v=17"></script>
 <script src="pickup-admin.js?v=17"></script>
 <script src="onboarding.js?v=17"></script>
+<script src="pro-admin.js?v=18"></script>
 </body>
 </html>
