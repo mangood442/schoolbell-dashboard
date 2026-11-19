@@ -4,16 +4,13 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const DAY_MS = 86400000;
 let schoolId = null, config = { v: 2, sections: [] }, configVersion = 0, tab = "home";
-let me = null, myRole = "admin";
+let me = null, myRole = "admin", deviceCount = 0;
+const canWrite = () => myRole === "admin" || myRole === "manager";
 let logs = [], commands = [], curSec = -1;   // -1 = whole school (all sections)
 
-function normalizeConfig(p) {
-  const normSec = s => ({ id: s.id ?? null, name: s.name || "قسم", defaultSoundKey: s.defaultSoundKey || "bell1", schedules: Array.isArray(s.schedules) ? s.schedules : [] });
-  const scenes = p && Array.isArray(p.scenes) ? p.scenes : [];
-  if (p && Array.isArray(p.sections)) return { v: 2, sections: p.sections.map(normSec), scenes };
-  const scheds = p && Array.isArray(p.schedules) ? p.schedules : [];
-  return { v: 2, sections: [normSec({ name: "عام", schedules: scheds })], scenes };
-}
+// Keeps prayer/scenes/calendar and hides compiled calendar schedules (common.js) —
+// the old local copy dropped each section's prayer settings on «تطبيق الإزاحة».
+function normalizeConfig(p) { return MQ.normalizeConfig(p); }
 function secObj() { return curSec >= 0 ? config.sections[curSec] : null; }
 function multiSection() { return config.sections.length > 1; }
 
@@ -23,7 +20,7 @@ async function login() {
     email: document.getElementById("email").value.trim(),
     password: document.getElementById("password").value,
   });
-  if (error) return show("loginMsg", "فشل الدخول: " + error.message, true);
+  if (error) return show("loginMsg", MQ.loginError(error), true);
   init();
 }
 async function logout() { await db.auth.signOut(); location.reload(); }
@@ -45,12 +42,14 @@ async function init() {
 }
 
 async function refresh() {
-  const [{ data: school }, { data: cfg }, { data: lg }, { data: cmd }] = await Promise.all([
+  const [{ data: school }, { data: cfg }, { data: lg }, { data: cmd }, { count: devCount }] = await Promise.all([
     db.from("schools").select("name").maybeSingle(),
     db.from("school_configs").select("version, payload").maybeSingle(),
     db.from("device_logs").select("event_name, planned_at, executed_at, status").order("planned_at", { ascending: false }).limit(60),
     db.from("commands").select("type, payload, created_at, delivered_at").order("id", { ascending: false }).limit(15),
+    db.from("devices").select("id", { count: "exact", head: true }),
   ]);
+  deviceCount = devCount || 0;
   document.getElementById("schoolName").textContent = school?.name || "—";
   configVersion = cfg?.version || 0;
   config = normalizeConfig(cfg?.payload);
@@ -58,11 +57,12 @@ async function refresh() {
   if (curSec >= config.sections.length) curSec = -1;
   logs = lg || []; commands = cmd || [];
   const now = new Date();
-  const fmt = new Intl.DateTimeFormat("ar", { weekday: "long", day: "numeric", month: "long" });
+  const fmt = new Intl.DateTimeFormat("ar-u-nu-latn-ca-gregory", { weekday: "long", day: "numeric", month: "long" });
   const s = secObj();
-  const active = s ? (s.schedules.find(x => x.isActive) || s.schedules[0]) : null;
+  const plan = s ? MQ.dayPlan(s, config.calendar, MQ.todayIso()) : {};
+  const active = plan.schedule;
   document.getElementById("todayLine").textContent = fmt.format(now) +
-    (s ? " · " + s.name : "") + (active ? " · " + active.name : "");
+    (s ? " · " + s.name : "") + (plan.holiday ? " · إجازة: " + plan.holiday.name : (active ? " · " + active.name : ""));
 }
 
 // Section chips shown atop each tab (only when the school has more than one).
@@ -77,8 +77,9 @@ function pickSection(i) { curSec = i; showTab(tab); }
 function activeEvents() {
   const secs = curSec >= 0 ? [config.sections[curSec]] : config.sections;
   const isoDow = ((new Date().getDay() + 6) % 7); // 0=Mon..6=Sun
+  const iso = MQ.todayIso();
   return secs.filter(Boolean).flatMap(sc => {
-    const s = (sc.schedules || []).find(x => x.isActive) || (sc.schedules || [])[0];
+    const s = MQ.dayPlan(sc, config.calendar, iso).schedule;   // holidays → null (no bells)
     return (s?.events || []).filter(e => e.enabled !== false && (e.daysOfWeek & (1 << isoDow)));
   }).sort((a, b) => a.startMinuteOfDay - b.startMinuteOfDay);
 }
@@ -151,7 +152,7 @@ async function tuyaCtl(id, action, value) {
   const { error } = await db.from("commands").insert({ school_id: schoolId, type: "device",
     payload: { tuyaDeviceId: id, action, value: value ?? null }, section_id: dev?.section_id ?? null });
   if (!error) wakeTablets(schoolId);
-  const m = document.getElementById("tuyaMsg"); if (m) m.textContent = error ? "فشل: " + error.message : "✓ أُرسل الأمر إلى التابلت";
+  const m = document.getElementById("tuyaMsg"); if (m) m.textContent = error ? "فشل: " + MQ.err(error) : "✓ أُرسل الأمر إلى التابلت";
 }
 async function runScene(id) {
   const sc = (config.scenes || []).find(x => x.id === id); if (!sc) return;
@@ -192,7 +193,7 @@ async function saveProfile() {
   const full_name = document.getElementById("accName").value.trim();
   const phone = document.getElementById("accPhone").value.trim();
   const { error } = await db.from("profiles").upsert({ user_id: me.id, full_name, phone, updated_at: new Date().toISOString() });
-  document.getElementById("accMsg").textContent = error ? "فشل: " + error.message : "✓ حُفظت بياناتك.";
+  document.getElementById("accMsg").textContent = error ? "فشل: " + MQ.err(error) : "✓ حُفظت بياناتك.";
 }
 async function changePassword() {
   const p1 = document.getElementById("accPw1").value, p2 = document.getElementById("accPw2").value;
@@ -200,7 +201,7 @@ async function changePassword() {
   if (p1.length < 6) { msg.textContent = "كلمة المرور 6 أحرف على الأقل."; return; }
   if (p1 !== p2) { msg.textContent = "كلمتا المرور غير متطابقتين."; return; }
   const { error } = await db.auth.updateUser({ password: p1 });
-  msg.textContent = error ? "فشل: " + error.message : "✓ تم تحديث كلمة المرور.";
+  msg.textContent = error ? "فشل: " + MQ.err(error) : "✓ تم تحديث كلمة المرور.";
   if (!error) { document.getElementById("accPw1").value = ""; document.getElementById("accPw2").value = ""; }
 }
 
@@ -247,14 +248,23 @@ function renderHome() {
         <span class="tag-green">${esc(curSub)}</span>
       </div>
     </div>
-    <div class="row">
-      <button class="btn-primary" data-onclick="h18">الجرس الآن</button>
-      <button class="btn-tonal" data-onclick="h4">نداء</button>
-    </div>
+    ${homeActions()}
     <div class="msg" id="msg"></div>
     <span class="muted">مسار اليوم</span>
     <div style="display:flex; flex-direction:column; gap:8px;">${rows || '<span class="muted">لا أحداث اليوم</span>'}</div>
   `;
+}
+
+// MQ-UX-15/08: no «الجرس الآن» without a linked tablet; viewers get a read-only note.
+function homeActions() {
+  if (!canWrite()) return `<div class="card muted">صلاحيتك: مشاهدة فقط — اطلب التعديل أو إرسال الجرس من مدير الحساب.</div>`;
+  if (!deviceCount) return `<div class="card"><b>لا يوجد تابلت مرتبط بعد</b>
+      <p class="muted" style="margin:6px 0 10px">اربط التابلت أولاً ليرنّ الجرس ويصل النداء: ثبّت تطبيق ميقات على التابلت وأدخل رمز التفعيل.</p>
+      <a class="btn-primary" style="text-decoration:none;display:inline-block" href="/download.html" target="_blank" rel="noopener">تنزيل تطبيق التابلت</a></div>`;
+  return `<div class="row">
+      <button class="btn-primary" data-onclick="h18">الجرس الآن</button>
+      <button class="btn-tonal" data-onclick="h4">نداء</button>
+    </div>`;
 }
 
 function renderAnnounce() {
@@ -282,7 +292,7 @@ function renderAnnounce() {
     <div class="card" style="display:flex; flex-direction:column; gap:8px;">
       <h2>آخر الأوامر</h2>
       ${commands.length ? commands.map(c => {
-        const label = c.type === "bell" ? "🔔 جرس فوري" : "📢 " + esc(c.payload?.text || "نداء");
+        const label = c.type === "bell" ? "<i data-ic=bell></i> جرس فوري" : "<i data-ic=megaphone></i> " + esc(c.payload?.text || "نداء");
         const st = c.delivered_at ? `<span class="tag-green">وصل ✓</span>` : `<span class="tag-amber">بانتظار التابلت…</span>`;
         return `<div class="row" style="padding:6px 0; border-bottom:1px solid var(--border);"><span style="flex:1; font-size:14px;">${label}</span>${st}</div>`;
       }).join("") : '<span class="muted">لا أوامر بعد</span>'}
@@ -324,10 +334,10 @@ function renderSchedules() {
 function renderLog() {
   const rows = logs.slice(0, 40).map(l => {
     const t = new Date(l.planned_at);
-    const time = new Intl.DateTimeFormat("ar", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }).format(t);
-    const drift = l.executed_at ? (new Date(l.executed_at) - t) + " ms" : "—";
+    const time = new Intl.DateTimeFormat("ar-u-nu-latn-ca-gregory", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", hourCycle: "h23" }).format(t);
+    const drift = l.executed_at ? (new Date(l.executed_at) - t) + " ملّي ث" : "—";
     const cls = l.status === "EXECUTED" ? "tag-green" : l.status === "SILENCED" ? "tag-amber" : "tag-dim";
-    return `<div class="evt"><span style="flex:1; font-size:14px;">${esc(l.event_name)}</span><span class="muted mono" style="margin-inline-end:8px;">${time}</span><span class="${cls}">${esc(l.status)}</span></div>`;
+    return `<div class="evt"><span style="flex:1; font-size:14px;">${esc(l.event_name)}</span><span class="muted mono" style="margin-inline-end:8px;">${time}</span><span class="${cls}">${esc(MQ.statusAr(l.status))}</span></div>`;
   }).join("");
   return `<span class="muted">سجل التنفيذ (آخر 40)</span><div style="display:flex; flex-direction:column; gap:8px;">${rows || '<span class="muted">لا سجل بعد</span>'}</div>`;
 }
@@ -346,7 +356,7 @@ async function sendBell() {
   const { error } = await db.from("commands").insert({ school_id: schoolId, type: "bell", payload: {}, section_id: cmdTarget() });
   if (!error) wakeTablets(schoolId);
   await refresh();
-  toast(error ? "فشل: " + error.message : "✓ أُرسل أمر الجرس", !!error);
+  toast(error ? "فشل: " + MQ.err(error) : "✓ أُرسل أمر الجرس", !!error);
 }
 // Nudge the school's tablets to sync immediately (instant remote command).
 function wakeTablets(sid) {
@@ -366,7 +376,7 @@ async function sendAnnounce() {
   const { error } = await db.from("commands").insert({ school_id: schoolId, type: "announce", payload: { text, delay: delayMin }, section_id: cmdTarget() });
   if (!error) { wakeTablets(schoolId); document.getElementById("annText").value = ""; }
   await refresh(); showTab("announce");
-  toast(error ? "فشل: " + error.message : "✓ أُرسل النداء", !!error);
+  toast(error ? "فشل: " + MQ.err(error) : "✓ أُرسل النداء", !!error);
 }
 async function activateSchedule(name) {
   const s0 = secObj() || config.sections[0];
@@ -384,22 +394,22 @@ async function applyShift() {
 }
 async function publishConfig(okMsg) {
   const { error } = await db.from("school_configs")
-    .update({ payload: config, version: configVersion + 1, updated_at: new Date().toISOString() })
+    .update({ payload: MQ.compileCalendar(config), version: configVersion + 1, updated_at: new Date().toISOString() })
     .eq("school_id", schoolId);
-  if (!error) configVersion++;
+  if (!error) { configVersion++; wakeTablets(schoolId); }
   await refresh(); showTab("schedules");
-  toast(error ? "فشل: " + error.message : okMsg, !!error);
+  toast(error ? "فشل: " + MQ.err(error) : okMsg, !!error);
 }
 
 function toast(text, isError) {
   const el = document.getElementById("msg");
   if (!el) return;
-  el.textContent = text; el.className = "msg " + (isError ? "err" : "ok");
+  el.textContent = MQ.arText(text); el.className = "msg " + (isError ? "err" : "ok");
   setTimeout(() => { if (el) el.className = "msg"; }, 5000);
 }
 function show(id, text, isError) {
   const el = document.getElementById(id);
-  el.textContent = text; el.className = "msg " + (isError ? "err" : "ok");
+  el.textContent = MQ.arText(text); el.className = "msg " + (isError ? "err" : "ok");
 }
 function esc(s) { return String(s ?? "").replace(/[&<>"'`]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "`": "&#96;" }[c])); }
 

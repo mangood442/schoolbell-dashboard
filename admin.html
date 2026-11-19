@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://meeqat-api.tripleodoo.com; media-src 'self' blob: https://meeqat-api.tripleodoo.com; connect-src 'self' https://meeqat-api.tripleodoo.com wss://meeqat-api.tripleodoo.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ميقات — لوحة المزوّد</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxMjggMTI4Jz48cmVjdCB3aWR0aD0nMTI4JyBoZWlnaHQ9JzEyOCcgcng9JzI4JyBmaWxsPScjMEI2QjRBJy8+PGcgdHJhbnNmb3JtPSd0cmFuc2xhdGUoMTkuOCAyMC40KSBzY2FsZSgwLjY2KSc+PHBhdGggZmlsbD0nI2ZmZicgZD0nTTU4LjUsMjMuNSBhNS41LDUuNSAwIDEsMCAxMSwwIGE1LjUsNS41IDAgMSwwIC0xMSwwIFogTTYwLDI2IGg4IHY3IGgtOCBaIE02NCwzMSBDODMsMzEgOTIsNDYuNSA5Miw2NSBMOTIsNzQgQzkyLDgyIDk1LDg3LjIgMTAwLDkxIEwyOCw5MSBDMzMsODcuMiAzNiw4MiAzNiw3NCBMMzYsNjUgQzM2LDQ2LjUgNDUsMzEgNjQsMzEgWiBNMzEuMjUsODggaDY1LjUgYTUuMjUsNS4yNSAwIDAsMSA1LjI1LDUuMjUgYTUuMjUsNS4yNSAwIDAsMSAtNS4yNSw1LjI1IGgtNjUuNSBhNS4yNSw1LjI1IDAgMCwxIC01LjI1LC01LjI1IGE1LjI1LDUuMjUgMCAwLDEgNS4yNSwtNS4yNSBaIE01Ny40LDEwNy41IGE2LjYsNi42IDAgMSwwIDEzLjIsMCBhNi42LDYuNiAwIDEsMCAtMTMuMiwwIFonLz48Y2lyY2xlIGN4PSc5OScgY3k9JzMzJyByPSc5JyBmaWxsPScjNUVFMEFEJy8+PC9nPjwvc3ZnPg==">
@@ -46,6 +47,10 @@
   #login { max-width:400px; margin:90px auto; }
   #login .logo { display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:12px; background:var(--navy); color:#fff; font-weight:700; font-size:22px; margin-bottom:14px; }
   #login input { width:100%; margin-bottom:12px; padding:13px; }
+  #login .fl { display:block; font-size:14px; font-weight:600; margin:0 0 6px; color:#2F4239; }
+  .legal-foot { display:flex; flex-wrap:wrap; gap:8px 18px; align-items:center; justify-content:center; padding:18px 16px 28px; font-size:13px; color:#4B5B53; }
+  .legal-foot nav { display:flex; gap:6px 16px; flex-wrap:wrap; } .legal-foot a { color:#4B5B53; text-decoration:none; }
+  .legal-foot .wj { display:inline-flex; align-items:center; gap:8px; color:rgba(35,31,32,.75); } .legal-foot .wj img { height:18px; width:auto; opacity:.6; }
   .ok-txt { color:var(--green); font-weight:600; } .bad-txt { color:var(--red); font-weight:600; }
   .warn-txt { color:var(--amber); font-weight:600; }
   code { background:var(--navy-container); color:var(--navy-d); padding:3px 9px; border-radius:8px; direction:ltr; display:inline-block; font-family:'IBM Plex Mono', monospace; font-size:13px; }
@@ -81,6 +86,7 @@
   @media (max-width:820px){ .kpis, .grid2 { grid-template-columns:1fr; } main { padding:16px; } }
   [hidden] { display:none !important; }
 </style>
+<link rel="stylesheet" href="common.css?v=18">
 </head>
 <body>
 
@@ -94,23 +100,27 @@
   <div id="login" class="card">
     <span class="logo"><svg viewBox="0 0 128 128" width="66%" height="66%" aria-hidden="true"><g fill="#fff"><circle cx="64" cy="23.5" r="5.5"/><rect x="60" y="26" width="8" height="7" rx="3.2"/><path d="M64 31C83 31 92 46.5 92 65V74C92 82 95 87.2 100 91H28C33 87.2 36 82 36 74V65C36 46.5 45 31 64 31Z"/><rect x="26" y="88" width="76" height="10.5" rx="5.25"/><circle cx="64" cy="107.5" r="6.6"/></g><circle cx="99" cy="33" r="9" fill="#5EE0AD"/></svg></span>
     <h2>دخول المشرف العام — ميقات</h2>
-    <input id="email" type="email" placeholder="البريد الإلكتروني" dir="ltr" autocomplete="username">
-    <input id="password" type="password" placeholder="كلمة المرور" dir="ltr" autocomplete="current-password">
+    <label class="fl" for="email">البريد الإلكتروني</label>
+    <input id="email" type="email" placeholder="name@wajhatnuzum.com" dir="ltr" autocomplete="username">
+    <label class="fl" for="password">كلمة المرور</label>
+    <input id="password" type="password" dir="ltr" autocomplete="current-password">
     <button class="primary" style="width:100%" data-onclick="h1">دخول</button>
-    <div class="msg" id="loginMsg"></div>
+    <div class="msg" id="loginMsg" role="status"></div>
+    <div id="authHelp" data-auth-help></div>
+    <div id="mfaBox" hidden></div>
   </div>
 
   <!-- ── App: list view ── -->
   <div id="app" hidden>
     <div class="tabs">
-      <button data-tab="overview" class="active" data-onclick="h2">📊 نظرة عامة</button>
-      <button data-tab="schools" data-onclick="h3">🏫 المدارس</button>
-      <button data-tab="devices" data-onclick="h4">📱 الأجهزة</button>
-      <button data-tab="alerts" data-onclick="h5">🔔 التنبيهات <span id="alertsBadge" class="badge" hidden></span></button>
-      <button data-tab="invoices" data-onclick="h6">🧾 الفواتير</button>
-      <button data-tab="plans" data-onclick="h7">📦 الباقات</button>
-      <button data-tab="audit" data-onclick="h8">📜 سجل العمليات</button>
-      <button data-tab="account" data-onclick="h9">👤 حسابي</button>
+      <button data-tab="overview" class="active" data-onclick="h2"><i data-ic=chart></i> نظرة عامة</button>
+      <button data-tab="schools" data-onclick="h3"><i data-ic=school></i> المدارس</button>
+      <button data-tab="devices" data-onclick="h4"><i data-ic=tablet></i> الأجهزة</button>
+      <button data-tab="alerts" data-onclick="h5"><i data-ic=bell></i> التنبيهات <span id="alertsBadge" class="badge" hidden></span></button>
+      <button data-tab="invoices" data-onclick="h6"><i data-ic=receipt></i> الفواتير</button>
+      <button data-tab="plans" data-onclick="h7"><i data-ic=package></i> الباقات</button>
+      <button data-tab="audit" data-onclick="h8"><i data-ic=history></i> سجل العمليات</button>
+      <button data-tab="account" data-onclick="h9"><i data-ic=user></i> حسابي</button>
     </div>
 
     <!-- Overview -->
@@ -197,7 +207,7 @@
           <h2 style="flex:1;margin:0">سجل العمليات</h2>
           <select id="auAction" data-onchange="h15"><option value="">كل العمليات</option></select>
           <input id="auSearch" placeholder="بحث في التفاصيل…" style="min-width:180px" data-oninput="h16">
-          <button class="ghost" data-onclick="h17">⬇ تصدير CSV</button>
+          <button class="ghost" data-onclick="h17"><i data-ic=download></i> تصدير CSV</button>
         </div>
         <div id="auditBody"><p class="muted">…</p></div>
       </div>
@@ -210,12 +220,12 @@
         <div class="row"><label class="muted" style="width:130px">الدور</label><span>المزوّد (مشرف عام)</span></div>
         <label class="muted">الاسم الكامل</label><input id="accName" placeholder="اسمك الكامل">
         <label class="muted">رقم الجوال</label><input id="accPhone" dir="ltr" placeholder="05xxxxxxxx">
-        <button class="primary" data-onclick="h18">💾 حفظ البيانات</button>
+        <button class="primary" data-onclick="h18"><i data-ic=save></i> حفظ البيانات</button>
         <hr style="border:none;border-top:1px solid var(--line);margin:4px 0">
         <h2 style="margin:0;font-size:16px">تغيير كلمة المرور</h2>
         <input id="accPw1" type="password" dir="ltr" placeholder="كلمة مرور جديدة (6 أحرف على الأقل)">
         <input id="accPw2" type="password" dir="ltr" placeholder="تأكيد كلمة المرور">
-        <button class="primary" data-onclick="h19">🔑 تحديث كلمة المرور</button>
+        <button class="primary" data-onclick="h19"><i data-ic=key></i> تحديث كلمة المرور</button>
         <p class="muted" id="accMsg"></p>
       </div>
     </section>
@@ -227,7 +237,13 @@
 
 <div class="msg" id="msg"></div>
 
+<footer class="legal-foot">
+  <nav aria-label="روابط قانونية"><a href="/privacy.html">سياسة الخصوصية</a><a href="/terms.html">شروط الاستخدام</a><a href="https://wa.me/966535313495" rel="noopener">الدعم</a></nav>
+  <a class="wj" href="https://wajhatnuzum.com" rel="noopener"><img src="/brand/wajhat-mark-dark.svg" alt="" width="34" height="18">من وجهة النظم</a>
+</footer>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js" integrity="sha384-2zrRDgDHSYB/GN3nFW3fsZXoxEhKIr3N2h63Tc6DEOB9JJdFIu8xMJT2Cph/gBil" crossorigin="anonymous"></script>
-<script src="admin.js?v=17"></script>
+<script src="common.js?v=18"></script>
+<script src="admin.js?v=18"></script>
 </body>
 </html>

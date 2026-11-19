@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://meeqat-api.tripleodoo.com; media-src 'self' blob: https://meeqat-api.tripleodoo.com; connect-src 'self' https://meeqat-api.tripleodoo.com wss://meeqat-api.tripleodoo.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ميقات — لوحة المدرسة</title>
 <meta name="description" content="لوحة تحكم المدرسة في ميقات: الجداول والأجراس والأذان والنداء والأجهزة.">
@@ -161,13 +162,50 @@
   .switch { white-space:nowrap; }
   #paZonesBox td input:not([type]), #paDevicesBox td input:not([type]) { width:170px; }
   #paZonesBox td, #paDevicesBox td { padding:10px 6px; }
+  /* UX 2026-11 — grouped tabs, schedule cards on phones, day chips, sync status */
+  .tabs { display:flex; flex-wrap:wrap; gap:10px 18px; align-items:flex-end; }
+  .tab-group { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .tab-group + .tab-group { border-inline-start:1px solid var(--line); padding-inline-start:14px; }
+  .tg-label { width:100%; font-size:12px; font-weight:600; color:var(--muted); margin-bottom:2px; }
+  .tabs button { padding:8px 14px; font-size:14px; display:inline-flex; align-items:center; gap:6px; }
+  .tbl-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .ev-time { width:84px; font-family:'IBM Plex Mono',monospace; text-align:center; letter-spacing:.5px; }
+  .ev-num { width:72px; text-align:center; }
+  .chips { display:flex; flex-wrap:wrap; gap:4px; }
+  .chip-day { border:1px solid var(--line); background:#fff; color:var(--mid); border-radius:999px; padding:4px 9px; font:inherit; font-size:13px; cursor:pointer; min-height:32px; }
+  .chip-day[aria-pressed="true"] { background:var(--green-container); border-color:var(--green-border); color:var(--green-dark); font-weight:600; }
+  .sync-status { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 12px; font-size:13px; }
+  .cal-item { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; padding:10px 0; border-bottom:1px solid var(--line); }
+  .cal-item .k { font-size:12px; padding:2px 8px; border-radius:999px; background:var(--amber-bg); color:#7A4B0E; }
+  .cal-item .k.sp { background:#EEF2FF; color:#1D4ED8; }
+  .hj { font-size:12px; color:var(--muted); }
+  .cal-form { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px 12px; align-items:end; border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px; background:#FBFCFB; }
+  .cal-form label { display:flex; flex-direction:column; gap:4px; font-size:13px; color:var(--mid); }
+  .period { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .period input[type=date] { min-width:150px; }
+  body.ro [data-write] { display:none !important; }
   @media (max-width: 760px) {
     main { padding:16px 12px; } header { padding:12px 14px; }
-    .tabs { flex-wrap:nowrap; overflow-x:auto; padding-bottom:6px; } .tabs button { white-space:nowrap; padding:9px 14px; }
     .card { padding:16px; } .row > input, .row > select { min-width:0 !important; max-width:100%; }
     button.big { width:100%; }
+    main { padding:14px 12px; } header { padding:12px 14px; flex-wrap:wrap; }
+    .card { padding:16px; border-radius:16px; }
+    .tab-group + .tab-group { border-inline-start:0; padding-inline-start:0; }
+    .tabs { gap:8px; }
+    #eventsTable thead { display:none; }
+    #eventsTable, #eventsTable tbody { display:block; width:100%; }
+    #eventsTable tr.ev { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; padding:12px; border:1px solid var(--line); border-radius:14px; margin-bottom:10px; background:#fff; }
+    #eventsTable tr.ev td { display:flex; flex-direction:column; gap:4px; padding:0; border:0; min-width:0; }
+    #eventsTable tr.ev td::before { content:attr(data-label); font-size:12px; color:var(--muted); font-weight:600; }
+    #eventsTable td.c-time { grid-column:1 / 2; } #eventsTable td.c-name { grid-column:2 / 4; }
+    #eventsTable td.c-days, #eventsTable td.c-sound { grid-column:1 / -1; }
+    #eventsTable td.c-act { grid-column:1 / -1; flex-direction:row; justify-content:flex-end; gap:8px; }
+    #eventsTable td.c-act::before { display:none; }
+    #eventsTable tr.ev input:not([type=checkbox]), #eventsTable tr.ev select { width:100% !important; min-width:0; }
+    .kpis { grid-template-columns:1fr 1fr; }
   }
 </style>
+<link rel="stylesheet" href="common.css?v=18">
 </head>
 <body>
 
@@ -175,7 +213,7 @@
   <span class="logo"><svg viewBox="0 0 128 128" width="66%" height="66%" aria-hidden="true"><g fill="#fff"><circle cx="64" cy="23.5" r="5.5"/><rect x="60" y="26" width="8" height="7" rx="3.2"/><path d="M64 31C83 31 92 46.5 92 65V74C92 82 95 87.2 100 91H28C33 87.2 36 82 36 74V65C36 46.5 45 31 64 31Z"/><rect x="26" y="88" width="76" height="10.5" rx="5.25"/><circle cx="64" cy="107.5" r="6.6"/></g><circle cx="99" cy="33" r="9" fill="#5EE0AD"/></svg></span>
   <h1>ميقات</h1>
   <span class="school" id="schoolName"></span>
-  <a class="gate-link" id="gateLink" href="./gate.html" style="display:none">🚪 شاشة البوابة</a>
+  <a class="gate-link" id="gateLink" href="./gate.html" style="display:none"><i data-ic=door></i> شاشة البوابة</a>
   <button class="ghost" id="logoutBtn" style="display:none">خروج</button>
 </header>
 
@@ -189,7 +227,8 @@
     <label class="fl" for="password">كلمة المرور</label>
     <input id="password" type="password" dir="ltr" autocomplete="current-password">
     <button class="primary" style="width:100%" data-onclick="h1">دخول</button>
-    <div class="msg" id="loginMsg"></div>
+    <div class="msg" id="loginMsg" role="status"></div>
+    <div id="authHelp" data-auth-help></div>
     <p class="muted" style="text-align:center;margin-top:14px">مدرسة جديدة؟ <a href="./signup.html" style="color:var(--green-dark);font-weight:600;text-decoration:none">ابدأ تجربة مجانية 14 يومًا</a></p>
   </div>
 
@@ -198,26 +237,38 @@
     <div id="trialBanner" class="trial-banner"></div>
     <div id="proEmergencyBanner" role="alert"></div>
     <div id="startHere" class="card" style="display:none"></div>
-    <div class="tabs">
-      <button data-tab="schedules" class="active" data-onclick="h2">📅 الجداول</button>
-      <button data-tab="reports" data-onclick="h3">📊 التقارير</button>
-      <button data-tab="logs" data-onclick="h4">📋 السجلات</button>
-      <button data-tab="announce" data-onclick="h5">📢 النداء</button>
-      <button data-tab="devices" data-onclick="h6">📱 الأجهزة</button>
-      <button data-tab="sounds" data-onclick="h7">🔊 الأصوات</button>
-      <button data-tab="smart" data-onclick="h8">🔌 الأجهزة الذكية</button>
-      <button data-tab="students" data-onclick="h54">👨‍👩‍👧 الطلاب وأولياء الأمور</button>
-      <button data-tab="pickup" data-onclick="h55">🚗 إعدادات الاستلام</button>
-      <button data-tab="notices" data-onclick="h56">📣 التعاميم</button>
-      <button data-tab="pa_zones" class="pro-only" style="display:none" data-onclick="x0">🗺️ المناطق والمجموعات</button>
-      <button data-tab="pa_devices" class="pro-only" style="display:none" data-onclick="x0">🔊 السماعات والأجهزة</button>
-      <button data-tab="pa_sched" class="pro-only" style="display:none" data-onclick="x0">⏱️ جداول المناطق</button>
-      <button data-tab="pa_emergency" class="pro-only" style="display:none" data-onclick="x0">🚨 الطوارئ</button>
-      <button data-tab="pa_streams" class="pro-only" style="display:none" data-onclick="x0">📻 البث المستمر</button>
-      <button data-tab="pa_inputs" class="pro-only" style="display:none" data-onclick="x0">🔥 مداخل الإنذار</button>
-      <button data-tab="billing" data-onclick="o1">💳 الاشتراك</button>
-      <button data-tab="account" data-onclick="h9">👤 حسابي</button>
-    </div>
+    <div id="roBanner" class="ro-banner" hidden><i data-ic=eye></i><span>صلاحيتك: مشاهدة فقط — يمكنك الاطلاع على كل شيء، واطلب أي تعديل من مدير الحساب.</span></div>
+    <nav class="tabs" aria-label="أقسام لوحة المدرسة">
+      <div class="tab-group"><span class="tg-label">اليوم</span>
+        <button data-tab="schedules" class="active" data-onclick="h2"><i data-ic=calendar></i> الجداول</button>
+        <button data-tab="calendar" data-onclick="c1"><i data-ic=calendar-off></i> التقويم والإجازات</button>
+        <button data-tab="announce" data-onclick="h5"><i data-ic=megaphone></i> النداء</button>
+        <button data-tab="logs" data-onclick="h4"><i data-ic=list></i> السجلات</button>
+        <button data-tab="reports" data-onclick="h3"><i data-ic=chart></i> التقارير</button>
+      </div>
+      <div class="tab-group"><span class="tg-label">الأجهزة</span>
+        <button data-tab="devices" data-onclick="h6"><i data-ic=tablet></i> التابلت</button>
+        <button data-tab="sounds" data-onclick="h7"><i data-ic=volume></i> الأصوات</button>
+        <button data-tab="smart" data-onclick="h8"><i data-ic=plug></i> الأجهزة الذكية</button>
+      </div>
+      <div class="tab-group"><span class="tg-label">الطلاب والاستلام</span>
+        <button data-tab="students" data-onclick="h54"><i data-ic=users></i> الطلاب وأولياء الأمور</button>
+        <button data-tab="pickup" data-onclick="h55"><i data-ic=car></i> الاستلام</button>
+        <button data-tab="notices" data-onclick="h56"><i data-ic=file></i> التعاميم</button>
+      </div>
+      <div class="tab-group pro-only" style="display:none"><span class="tg-label">ميقات برو</span>
+        <button data-tab="pa_zones" class="pro-only" style="display:none" data-onclick="x0"><i data-ic=pin></i> المناطق والمجموعات</button>
+        <button data-tab="pa_devices" class="pro-only" style="display:none" data-onclick="x0"><i data-ic=volume></i> السماعات والأجهزة</button>
+        <button data-tab="pa_sched" class="pro-only" style="display:none" data-onclick="x0"><i data-ic=clock></i> جداول المناطق</button>
+        <button data-tab="pa_emergency" class="pro-only" style="display:none" data-onclick="x0"><i data-ic=alert></i> الطوارئ</button>
+        <button data-tab="pa_streams" class="pro-only" style="display:none" data-onclick="x0"><i data-ic=play></i> البث المستمر</button>
+        <button data-tab="pa_inputs" class="pro-only" style="display:none" data-onclick="x0"><i data-ic=zap></i> مداخل الإنذار</button>
+      </div>
+      <div class="tab-group"><span class="tg-label">الحساب</span>
+        <button data-tab="billing" data-onclick="o1"><i data-ic=card></i> الاشتراك</button>
+        <button data-tab="account" data-onclick="h9"><i data-ic=user></i> حسابي</button>
+      </div>
+    </nav>
     <div class="msg" id="msg"></div>
 
     <!-- Schedules -->
@@ -228,23 +279,41 @@
 
       <div class="row" style="margin-bottom:12px">
         <div id="schedList" class="row"></div>
-        <button class="ghost" data-onclick="h10">+ جدول جديد</button>
+        <button class="ghost" data-onclick="h10" data-write><i data-ic=plus></i> جدول جديد</button>
         <span style="flex:1"></span>
-        <button class="ghost" data-onclick="h11" title="حفظ نسخة احتياطية لجداول هذا القسم">⬇ تصدير القسم</button>
-        <button class="ghost" data-onclick="h12" title="استعادة جداول هذا القسم من ملف">⬆ استيراد للقسم</button>
+        <button class="ghost" data-onclick="h11" data-ro-ok title="حفظ نسخة احتياطية لجداول هذا القسم"><i data-ic=download></i> تصدير القسم</button>
+        <button class="ghost" data-onclick="h12" data-write title="استعادة جداول هذا القسم من ملف"><i data-ic=upload></i> استيراد للقسم</button>
         <input type="file" id="importFile" accept="application/json" style="display:none" data-onchange="h13">
-        <button class="primary" data-onclick="h14">💾 حفظ ونشر للتابلت</button>
+        <button class="primary" data-onclick="h14" data-write><i data-ic=save></i> حفظ ونشر للتابلت</button>
       </div>
+      <div id="syncStatus" class="sync-status" aria-live="polite"></div>
       <div id="schedMeta" class="row" style="margin-bottom:10px"></div>
-      <table id="eventsTable">
+      <table id="eventsTable" class="ev-table">
         <thead><tr>
-          <th>الوقت</th><th>الاسم</th><th>المدة (د)</th><th>الأيام</th><th>النغمة</th><th>الصوت %</th><th>مفعّل</th><th>أجهزة</th><th id="eventsTargetTh" style="display:none">المناطق</th><th></th>
+          <th>الوقت</th><th>الاسم</th><th>المدة (د)</th><th>الأيام</th><th>النغمة</th><th>الصوت %</th><th>مفعّل</th><th>أجهزة ذكية</th><th id="eventsTargetTh" style="display:none">المناطق</th><th><span class="visually-hidden">حذف</span></th>
         </tr></thead>
         <tbody></tbody>
       </table>
-      <button class="ghost" style="margin-top:10px" data-onclick="h15">+ إضافة حدث</button>
-      <p class="muted">بعد الحفظ يسحب التابلت الجداول خلال ثوانٍ (فورًا عبر الاتصال اللحظي، أو خلال 25 ثانية كحد أقصى).</p>
+      <button class="ghost" style="margin-top:10px" data-onclick="h15" data-write><i data-ic=plus></i> إضافة حدث</button>
+      <p class="muted" data-sync-text="long"></p>
       <div id="prayerBox" style="margin-top:20px;border-top:1px solid var(--line);padding-top:16px"></div>
+    </section>
+
+    <!-- Cloud calendar: holidays / special days / dated schedule periods (MQ-UX-03) -->
+    <section id="tab-calendar" class="card" style="display:none">
+      <h2>التقويم المدرسي — الإجازات والأيام الخاصة</h2>
+      <p class="muted" style="margin-top:-6px">يُضبط هنا مرة واحدة ويصل لكل أجهزة المدرسة تلقائياً. <b>الإجازة</b>: لا تُقرع الأجراس طوال الفترة. <b>اليوم الخاص</b> (يوم اختبار مثلاً): يرنّ فيه جدول آخر تختاره بدل الجدول المعتاد. تُطبَّق التغييرات بعد «حفظ ونشر».</p>
+      <div id="calForm"></div>
+      <div id="calList"></div>
+      <h3>فترات الجداول (رمضان، أسبوع الاختبارات…)</h3>
+      <p class="muted" style="margin-top:-4px">أي جدول له فترة تفعيل (من/إلى) يحلّ تلقائياً محل الجدول النشط خلال فترته فقط. اضبط الفترة من تبويب «الجداول» أو أنشئ جدولاً من قالب:</p>
+      <div class="row" style="margin-bottom:10px">
+        <button class="ghost" data-onclick="c5" data-write><i data-ic=moon></i> جدول رمضان من الجدول الحالي</button>
+        <button class="ghost" data-onclick="c6" data-write><i data-ic=file></i> قالب «أيام الاختبارات»</button>
+      </div>
+      <div id="calPeriods"></div>
+      <div class="row" style="margin-top:14px"><span style="flex:1"></span><button class="primary" data-onclick="h14" data-write><i data-ic=save></i> حفظ ونشر للتابلت</button></div>
+      <p class="muted" data-sync-text="long"></p>
     </section>
 
     <!-- Reports -->
@@ -267,22 +336,24 @@
         <h2 style="flex:1">سجل التنفيذ (آخر 200)</h2>
         <button class="ghost" data-onclick="h17">تحديث</button>
       </div>
-      <table><thead><tr><th>الحدث</th><th>الوقت المخطط</th><th>الانحراف</th><th>الحالة</th><th>خطأ</th></tr></thead>
-      <tbody id="logsBody"></tbody></table>
+      <div class="tbl-scroll"><table><thead><tr><th>الحدث</th><th>الوقت المخطط</th><th>الانحراف</th><th>الحالة</th><th>ملاحظة</th></tr></thead>
+      <tbody id="logsBody"></tbody></table></div>
     </section>
 
     <!-- Announce -->
     <section id="tab-announce" class="card" style="display:none">
       <h2>نداء عن بُعد</h2>
       <div class="row">
-        <label class="muted">إلى</label>
-        <select id="announceTarget" title="وجهة النداء/الجرس"></select>
+        <label class="muted" for="announceTarget">إلى</label>
+        <select id="announceTarget"></select>
+        <label class="visually-hidden" for="announceText">نص النداء</label>
         <input id="announceText" style="flex:1;min-width:220px" placeholder="نص النداء (يُنطق بالصوت العربي على التابلت)">
-        <input id="announceDelay" type="number" min="0" max="180" value="0" style="width:90px" title="تأخير بالدقائق">
+        <label class="muted" for="announceDelay">بعد (دقائق)</label>
+        <input id="announceDelay" type="number" min="0" max="180" value="0" style="width:90px" inputmode="numeric" dir="ltr">
         <button class="primary" data-onclick="h18">إرسال النداء</button>
-        <button class="ghost" data-onclick="h19">🔔 جرس الآن</button>
+        <button class="ghost" data-onclick="h19"><i data-ic=bell></i> جرس الآن</button>
       </div>
-      <p class="muted">يصل الأمر للتابلت فورًا (خلال ثوانٍ عبر الاتصال اللحظي)، مع مزامنة احتياطية كل 25 ثانية.</p>
+      <p class="muted" data-sync-text="long"></p>
       <table style="margin-top:14px"><thead><tr><th>الأمر</th><th>أُنشئ</th><th>سُلّم</th></tr></thead>
       <tbody id="cmdBody"></tbody></table>
     </section>
@@ -291,14 +362,14 @@
     <section id="tab-devices" class="card" style="display:none">
       <h2>الأجهزة المرتبطة</h2>
       <p class="muted" style="margin-top:-8px">اربط كل جهاز بقسمه ليرنّ جدول ذلك القسم فقط، أو اتركه «كل المدرسة» ليرنّ اتحاد جداول الأقسام.</p>
-      <table><thead><tr><th>الاسم</th><th>القسم</th><th>الإصدار</th><th>آخر ظهور</th><th></th></tr></thead>
-      <tbody id="devicesBody"></tbody></table>
+      <div class="tbl-scroll"><table><thead><tr><th>الاسم</th><th>القسم</th><th>إصدار التطبيق</th><th>آخر اتصال</th><th>الجداول المستلمة</th><th></th></tr></thead>
+      <tbody id="devicesBody"></tbody></table></div>
     </section>
 
     <!-- Sounds -->
     <section id="tab-sounds" class="card" style="display:none">
       <div class="row" style="margin-bottom:6px"><h2 style="flex:1">مكتبة الأصوات</h2>
-        <label class="ghost" style="cursor:pointer">⬆ رفع صوت
+        <label class="ghost" style="cursor:pointer"><i data-ic=upload></i> رفع صوت
           <input type="file" id="soundFile" accept="audio/*" style="display:none" data-onchange="h20">
         </label>
       </div>
@@ -330,7 +401,7 @@
     <section id="tab-students" class="card" style="display:none">
       <div class="row" style="margin-bottom:6px"><h2 style="flex:1">الطلاب وأولياء الأمور</h2>
         <input id="stuSearch" placeholder="بحث بالاسم أو الجوال أو رقم الطالب" style="min-width:240px" data-oninput="p1">
-        <button class="ghost" data-onclick="p23">⬆ استيراد من نور (Excel / CSV)</button>
+        <button class="ghost" data-onclick="p23"><i data-ic=upload></i> استيراد من نور (Excel / CSV)</button>
         <input type="file" id="stuFile" accept=".csv,.xlsx,.xls,text/csv" style="display:none" data-onchange="p2">
         <button class="ghost" data-onclick="p22">+ طالب</button>
       </div>
@@ -345,7 +416,7 @@
     <!-- Pickup settings -->
     <section id="tab-pickup" class="card" style="display:none">
       <div class="row" style="margin-bottom:6px"><h2 style="flex:1">إعدادات الاستلام</h2>
-        <a class="gate-link" href="./gate.html">🚪 فتح شاشة البوابة</a></div>
+        <a class="gate-link" href="./gate.html"><i data-ic=door></i> فتح شاشة البوابة</a></div>
       <div id="pickupBox"></div>
     </section>
 
@@ -357,7 +428,7 @@
         <textarea id="ntBody" placeholder="نص التعميم" maxlength="4000"></textarea>
         <div class="row"><label class="muted">إلى</label>
           <select id="ntTarget" data-onchange="p21"><option value="all">كل أولياء الأمور</option><option value="sections">أقسام محددة</option><option value="grades">صفوف محددة</option></select>
-          <span style="flex:1"></span><button class="primary" data-onclick="p19">📣 إرسال التعميم</button></div>
+          <span style="flex:1"></span><button class="primary" data-onclick="p19"><i data-ic=megaphone></i> إرسال التعميم</button></div>
         <div id="ntSections" class="row" style="display:none"></div>
         <div id="ntGrades" class="row" style="display:none"></div>
       </div>
@@ -392,14 +463,14 @@
           <input id="accName" style="flex:1;min-width:200px" placeholder="اسمك الكامل"></div>
         <div class="row"><label class="muted" style="width:130px">رقم الجوال</label>
           <input id="accPhone" dir="ltr" style="flex:1;min-width:200px" placeholder="05xxxxxxxx"></div>
-        <div class="row"><span style="width:130px"></span><button class="primary" data-onclick="h24">💾 حفظ البيانات</button></div>
+        <div class="row"><span style="width:130px"></span><button class="primary" data-onclick="h24"><i data-ic=save></i> حفظ البيانات</button></div>
         <hr style="border:none;border-top:1px solid var(--line);margin:6px 0">
         <h2 style="font-size:16px">تغيير كلمة المرور</h2>
         <div class="row"><label class="muted" style="width:130px">كلمة مرور جديدة</label>
           <input id="accPw1" type="password" dir="ltr" style="flex:1;min-width:200px" placeholder="6 أحرف على الأقل"></div>
         <div class="row"><label class="muted" style="width:130px">تأكيد</label>
           <input id="accPw2" type="password" dir="ltr" style="flex:1;min-width:200px" placeholder="أعد كتابتها"></div>
-        <div class="row"><span style="width:130px"></span><button class="primary" data-onclick="h25">🔑 تحديث كلمة المرور</button></div>
+        <div class="row"><span style="width:130px"></span><button class="primary" data-onclick="h25"><i data-ic=key></i> تحديث كلمة المرور</button></div>
         <p class="muted" id="accMsg"></p>
       </div>
     </section>
@@ -412,9 +483,10 @@
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js" integrity="sha384-2zrRDgDHSYB/GN3nFW3fsZXoxEhKIr3N2h63Tc6DEOB9JJdFIu8xMJT2Cph/gBil" crossorigin="anonymous"></script>
-<script src="index.js?v=17"></script>
-<script src="pickup-admin.js?v=17"></script>
-<script src="onboarding.js?v=17"></script>
-<script src="pro-admin.js?v=18"></script>
+<script src="common.js?v=18"></script>
+<script src="index.js?v=18"></script>
+<script src="pickup-admin.js?v=18"></script>
+<script src="onboarding.js?v=18"></script>
+<script src="pro-admin.js?v=19"></script>
 </body>
 </html>

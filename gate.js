@@ -19,7 +19,7 @@ async function login() {
     email: document.getElementById("email").value.trim(),
     password: document.getElementById("password").value,
   });
-  if (error) return msg("loginMsg", "فشل الدخول: " + error.message, true);
+  if (error) return msg("loginMsg", MQ.loginError(error), true);
   init();
 }
 
@@ -56,7 +56,7 @@ async function loadBoard() {
     .select("id, student_name, student_label, gate, source, status, requested_at, announced_at, released_at, picked_up_at")
     .eq("school_id", schoolId).gte("requested_at", since)
     .in("status", [...ACTIVE, "picked_up"]).order("id", { ascending: false }).limit(150);
-  if (error) return msg("msg", "تعذّر التحديث: " + error.message, true);
+  if (error) return msg("msg", "تعذّر التحديث: " + MQ.err(error), true);
   requests = (data || []).filter(r => ACTIVE.includes(r.status));
   done = (data || []).filter(r => r.status === "picked_up").sort((a, b) => (b.picked_up_at || "").localeCompare(a.picked_up_at || "")).slice(0, 8);
   render();
@@ -89,13 +89,13 @@ async function mark(id, status) {
   if (!canAct()) return;
   let { data, error } = await db.functions.invoke("pickup", { body: { action: "mark", request_id: Number(id), status } });
   if (error && error.name === "FunctionsHttpError") {
-    let m = error.message;
+    let m = MQ.err(error);
     try { m = (await error.context.json()).error || m; } catch (_) { /* keep */ }
     return msg("msg", m, true);
   }
   if (error) {  // function unreachable → same RPC directly (no push to the guardian)
     ({ error } = await db.rpc("gate_mark", { p_request: Number(id), p_status: status }));
-    if (error) return msg("msg", error.message, true);
+    if (error) return msg("msg", MQ.err(error), true);
   }
   msg("msg", status === "picked_up" ? "✓ تم التسليم" : "✓ خرج الطالب إلى البوابة");
   loadBoard();
@@ -105,16 +105,16 @@ async function search(q) {
   const box = document.getElementById("manualResults");
   if (q.trim().length < 2) { box.innerHTML = ""; return; }
   const { data, error } = await db.rpc("gate_search_students", { p_q: q.trim() });
-  if (error) { box.innerHTML = `<div class="msg err">${esc(error.message)}</div>`; return; }
+  if (error) { box.innerHTML = `<div class="msg err">${esc(MQ.err(error))}</div>`; return; }
   box.innerHTML = (data || []).map(s => `<div class="result"><span>${esc(s.full_name)}
       <small style="color:var(--dim)">${esc([s.grade, s.class_name].filter(Boolean).join(" "))}</small></span>
-      <button class="btn mint" data-onclick="g7" data-g7a0="${esc(s.id)}" ${s.has_active || !canAct() ? "disabled" : ""}>${s.has_active ? "نشط" : "📢 نداء"}</button></div>`).join("")
+      <button class="btn mint" data-onclick="g7" data-g7a0="${esc(s.id)}" ${s.has_active || !canAct() ? "disabled" : ""}>${s.has_active ? "نشط" : "<i data-ic=megaphone></i> نداء"}</button></div>`).join("")
     || `<div class="result"><span style="color:var(--dim)">لا نتائج</span></div>`;
 }
 
 async function manualCall(studentId) {
   const { error } = await db.rpc("gate_manual_call", { p_student: studentId, p_gate: gateFilter() || null });
-  if (error) return msg("msg", error.message, true);
+  if (error) return msg("msg", MQ.err(error), true);
   wakeTablets();
   document.getElementById("manualSearch").value = "";
   document.getElementById("manualResults").innerHTML = "";
@@ -165,10 +165,10 @@ function beep() {
 }
 function msg(id, text, isErr) {
   const el = document.getElementById(id);
-  el.textContent = text; el.className = "msg" + (isErr ? " err" : "");
+  el.textContent = MQ.arText(text); el.className = "msg" + (isErr ? " err" : "");
   clearTimeout(el._t); el._t = setTimeout(() => { el.textContent = ""; }, 6000);
 }
-function clock(ts) { return ts ? new Date(ts).toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Riyadh" }) : ""; }
+function clock(ts) { return ts ? new Date(ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Asia/Riyadh" }) : ""; }
 function ago(ts) {
   const m = Math.max(0, Math.round((Date.now() - new Date(ts).getTime()) / 60000));
   return m < 1 ? "الآن" : `منذ ${m} د`;

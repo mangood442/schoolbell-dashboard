@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://meeqat-api.tripleodoo.com; media-src 'self' blob: https://meeqat-api.tripleodoo.com; connect-src 'self' https://meeqat-api.tripleodoo.com wss://meeqat-api.tripleodoo.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0C1311">
 <title>ميقات — المدير</title>
@@ -76,6 +77,7 @@
   .legal-foot .wj { display:inline-flex; align-items:center; gap:8px; color:rgba(255,255,255,.7); }
   .legal-foot .wj img { height:18px; width:auto; opacity:.75; }
 </style>
+<link rel="stylesheet" href="common.css?v=18">
 </head>
 <body>
 
@@ -89,7 +91,8 @@
   <label class="fl" for="password">كلمة المرور</label>
   <input id="password" type="password" dir="ltr" autocomplete="current-password">
   <button class="btn-send" data-onclick="h1">دخول</button>
-  <div class="msg" id="loginMsg"></div>
+  <div class="msg" id="loginMsg" role="status"></div>
+  <div id="authHelp" data-auth-help class="dark"></div>
 <footer class="legal-foot">
   <nav aria-label="روابط قانونية"><a href="/privacy.html">سياسة الخصوصية</a><a href="/terms.html">شروط الاستخدام</a><a href="https://wa.me/966535313495" rel="noopener">الدعم</a></nav>
   <a class="wj" href="https://wajhatnuzum.com" rel="noopener"><img src="/brand/wajhat-mark-light.svg" alt="" width="34" height="18">من وجهة النظم</a>
@@ -119,6 +122,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js" integrity="sha384-2zrRDgDHSYB/GN3nFW3fsZXoxEhKIr3N2h63Tc6DEOB9JJdFIu8xMJT2Cph/gBil" crossorigin="anonymous"></script>
-<script src="manager.js"></script>
+<script src="common.js?v=18"></script>
+<script src="manager.js?v=18"></script>
 </body>
 </html>

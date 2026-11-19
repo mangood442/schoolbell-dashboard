@@ -29,7 +29,7 @@ async function login() {
     email: document.getElementById("email").value.trim(),
     password: document.getElementById("password").value,
   });
-  if (error) return show("loginMsg", "فشل الدخول: " + error.message, true);
+  if (error) return show("loginMsg", MQ.loginError(error), true);
   init();
 }
 async function init() {
@@ -37,6 +37,9 @@ async function init() {
   if (!session) return;
   const { data: sa } = await db.from("super_admins").select("user_id").maybeSingle();
   if (!sa) return show("loginMsg", "هذا الحساب ليس مشرفًا عامًا.", true);
+  // MQ-UX-13: provider accounts need TOTP (aal2). The database enforces it too:
+  // is_super_admin() is false for an aal1 session (migration 0022).
+  if (!(await ensureMfa())) return;
   actorId = session.user.id;
   myEmail = session.user.email || "";
   document.getElementById("login").hidden = true;
@@ -47,6 +50,50 @@ async function init() {
   showTab("overview");
 }
 document.getElementById("logoutBtn").onclick = async () => { await db.auth.signOut(); location.reload(); };
+
+// ─── Two-factor (TOTP) for provider accounts ────────────────────────────────
+async function ensureMfa() {
+  const { data: aal } = await db.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (aal && aal.currentLevel === "aal2") return true;
+  const { data: f, error } = await db.auth.mfa.listFactors();
+  if (error) { show("loginMsg", MQ.err(error), true); return false; }
+  const verified = (f?.totp || []).find(x => x.status === "verified");
+  const box = document.getElementById("mfaBox");
+  document.querySelectorAll("#login > input, #login > label.fl, #login > button.primary, #authHelp").forEach(el => el.hidden = true);
+  box.hidden = false;
+  if (verified) {
+    box.innerHTML = `<h3 style="margin:12px 0 6px">التحقق الثنائي</h3>
+      <p class="muted">أدخل الرمز المكوّن من 6 أرقام من تطبيق المصادقة (Google Authenticator أو Microsoft Authenticator).</p>
+      <label class="fl" for="mfaCode">رمز التحقق</label>
+      <input id="mfaCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" dir="ltr" class="mono" style="letter-spacing:6px;text-align:center">
+      <button class="primary" style="width:100%" id="mfaGo">تحقّق ودخول</button>`;
+    document.getElementById("mfaGo").onclick = () => verifyMfa(verified.id);
+  } else {
+    // remove half-finished enrolments, then enrol a fresh TOTP factor
+    for (const x of (f?.all || []).filter(x => x.status !== "verified")) await db.auth.mfa.unenroll({ factorId: x.id });
+    const { data: en, error: e2 } = await db.auth.mfa.enroll({ factorType: "totp", friendlyName: "ميقات — لوحة المزوّد " + Date.now().toString(36) });
+    if (e2 || !en) { show("loginMsg", MQ.err(e2), true); return false; }
+    box.innerHTML = `<h3 style="margin:12px 0 6px">فعّل التحقق الثنائي (مرة واحدة)</h3>
+      <p class="muted">لحماية لوحة المزوّد: امسح الرمز بتطبيق المصادقة على جوالك، ثم اكتب الرمز الظاهر فيه.</p>
+      <div style="text-align:center;margin:10px 0"><img alt="رمز QR للتحقق الثنائي" width="180" height="180" src="${esc(en.totp.qr_code)}"></div>
+      <p class="muted">أو أدخل المفتاح يدوياً: <code dir="ltr" class="mono" style="user-select:all">${esc(en.totp.secret)}</code></p>
+      <label class="fl" for="mfaCode">رمز التحقق</label>
+      <input id="mfaCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" dir="ltr" class="mono" style="letter-spacing:6px;text-align:center">
+      <button class="primary" style="width:100%" id="mfaGo">تفعيل ودخول</button>`;
+    document.getElementById("mfaGo").onclick = () => verifyMfa(en.id);
+  }
+  document.getElementById("mfaCode").focus();
+  document.getElementById("mfaCode").addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("mfaGo").click(); });
+  return false;
+}
+async function verifyMfa(factorId) {
+  const code = (document.getElementById("mfaCode").value || "").replace(/\D/g, "");
+  if (code.length !== 6) return show("loginMsg", "اكتب الرمز المكوّن من 6 أرقام.", true);
+  const { error } = await db.auth.mfa.challengeAndVerify({ factorId, code });
+  if (error) return show("loginMsg", /invalid|expired/i.test(error.message || "") ? "الرمز غير صحيح أو انتهت مدته — أدخل الرمز الحالي من التطبيق." : MQ.err(error), true);
+  document.getElementById("mfaBox").hidden = true;
+  init();
+}
 
 // ─── Data ─────────────────────────────────────────────────────────────────
 async function loadAll() {
@@ -86,7 +133,7 @@ function renderOverview() {
   if (veryStale.length) parts.push(`${veryStale.length} جهاز منقطع أكثر من 48 ساعة`);
   document.getElementById("alertBanner").innerHTML = parts.length
     ? `<div class="card" style="background:#FDF0E8;border-color:#F0C9A8;margin-bottom:16px;cursor:pointer" data-onclick="h3">
-        <b class="warn-txt">⚠️ تنبيه:</b> ${parts.join(" · ")} — <span class="muted">اضغط للمراجعة</span></div>`
+        <b class="warn-txt"><i data-ic=alert></i> تنبيه:</b> ${parts.join(" · ")} — <span class="muted">اضغط للمراجعة</span></div>`
     : "";
 
   const active = schools.filter(s=>schoolStatus(s)!=="stopped" && schoolStatus(s)!=="expired").length;
@@ -99,7 +146,7 @@ function renderOverview() {
   document.getElementById("kpis").innerHTML = `
     <div class="kpi"><div class="l">مدارس نشطة</div><div class="n">${active}</div></div>
     <div class="kpi"><div class="l">أجهزة متصلة الآن</div><div class="n">${online}<span class="muted" style="font-size:15px"> / ${devices.length}</span></div></div>
-    <div class="kpi"><div class="l">إيراد الشهر</div><div class="n">${revenue.toLocaleString("ar")} <span class="muted" style="font-size:15px">ر.س</span></div></div>
+    <div class="kpi"><div class="l">إيراد الشهر</div><div class="n">${revenue.toLocaleString("en-US")} <span class="muted" style="font-size:15px">ر.س</span></div></div>
     <div class="kpi"><div class="l">اشتراكات تنتهي خلال 30 يومًا</div><div class="n ${expired?"bad":"warn"}">${expiring}${expired?` <span style="font-size:15px">(+${expired} منتهٍ)</span>`:""}</div></div>`;
 
   const soon = schools.filter(s=>["expiring","expired"].includes(schoolStatus(s)))
@@ -126,7 +173,7 @@ function renderOverview() {
   const thisMonth = paid.filter(i=>new Date(i.paid_at).getMonth()===m && new Date(i.paid_at).getFullYear()===y).reduce((a,i)=>a+Number(i.amount||0),0);
   const thisYear = paid.filter(i=>new Date(i.paid_at).getFullYear()===y).reduce((a,i)=>a+Number(i.amount||0),0);
   const pending = invoices.filter(i=>i.status==="pending").reduce((a,i)=>a+Number(i.amount||0),0);
-  const rev = (n)=>n.toLocaleString("ar")+" ر.س";
+  const rev = (n)=>n.toLocaleString("en-US")+" ر.س";
   document.getElementById("revenue").innerHTML = `
     <div class="row" style="padding:9px 0;border-bottom:1px solid #EFF1F7"><span style="flex:1" class="muted">محصّل هذا الشهر</span><b class="mono">${rev(thisMonth)}</b></div>
     <div class="row" style="padding:9px 0;border-bottom:1px solid #EFF1F7"><span style="flex:1" class="muted">محصّل هذه السنة</span><b class="mono">${rev(thisYear)}</b></div>
@@ -163,7 +210,7 @@ function openNewSchool() {
   const name = prompt("اسم المدرسة الجديدة:");
   if (!name || !name.trim()) return;
   db.rpc("create_school_with_code", { p_name:name.trim(), p_plan:"basic", p_until:null }).then(async ({data,error})=>{
-    if (error) return show("msg","فشل: "+error.message, true);
+    if (error) return show("msg","فشل: "+MQ.err(error), true);
     audit("school.create", data?.[0]?.school_id, esc(name.trim()));
     show("msg", `✓ أُنشئت — رمز التفعيل: ${data?.[0]?.activation_code}`);
     await loadAll(); renderSchools(); renderOverview();
@@ -172,12 +219,8 @@ function openNewSchool() {
 
 // ─── School detail ──────────────────────────────────────────────────────────
 let cur = null, cfg = { v:2, sections:[] }, cfgVersion = 0, curSched = 0, curSec = 0;
-function normalizeCfg(p){
-  const normSec = s => ({ id:s.id??null, name:s.name||"قسم", defaultSoundKey:s.defaultSoundKey||"bell1", prayer:s.prayer||null, schedules:Array.isArray(s.schedules)?s.schedules:[] });
-  if (p && Array.isArray(p.sections)) return { v:2, sections:p.sections.map(normSec) };
-  const scheds = p && Array.isArray(p.schedules) ? p.schedules : [];
-  return { v:2, sections:[normSec({ name:"عام", schedules:scheds })] };
-}
+// Keeps scenes + cloud calendar and hides compiled calendar schedules (common.js).
+function normalizeCfg(p){ return MQ.normalizeConfig(p); }
 function cfgSec(){ return cfg.sections[curSec]; }
 function cfgScheds(){ return cfgSec()?cfgSec().schedules:[]; }
 
@@ -228,7 +271,7 @@ async function createSchoolUser() {
   const role = document.getElementById("suRole")?.value || "admin";
   const { data, error } = await db.functions.invoke("admin-users", { body:{ action:"create", schoolId:cur.id, email, password:pw, role } });
   const err = error || data?.error;
-  if (err) return show("msg","فشل: " + (data?.error || err.message || err), true);
+  if (err) return show("msg","فشل: " + (data?.error || MQ.err(err)), true);
   audit("account.create", cur.id, `${esc(cur.name)}: ${esc(email)}`);
   document.getElementById("suEmail").value=""; document.getElementById("suPass").value="";
   await loadSchoolUsers(); show("msg","✓ أُنشئ الحساب — سلّم بيانات الدخول للمدرسة");
@@ -238,13 +281,13 @@ async function resetSchoolUser(userId) {
   if (!pw || pw.length < 10) return alert("10 أحرف على الأقل");
   const { data, error } = await db.functions.invoke("admin-users", { body:{ action:"reset", userId, password:pw } });
   const err = error || data?.error;
-  show("msg", err ? "فشل: "+(data?.error||err.message||err) : "✓ غُيّرت كلمة المرور", !!err);
+  show("msg", err ? "فشل: "+(data?.error||MQ.err(err)) : "✓ غُيّرت كلمة المرور", !!err);
 }
 async function removeSchoolUser(userId, email) {
   if (!confirm(`حذف حساب الدخول "${email}"؟`)) return;
   const { data, error } = await db.functions.invoke("admin-users", { body:{ action:"remove", userId } });
   const err = error || data?.error;
-  if (err) return show("msg","فشل: "+(data?.error||err.message||err), true);
+  if (err) return show("msg","فشل: "+(data?.error||MQ.err(err)), true);
   await loadSchoolUsers(); show("msg","✓ حُذف الحساب");
 }
 function backToList(){ document.getElementById("detail").hidden = true; document.getElementById("app").hidden = false; loadAll().then(()=>{ renderSchools(); renderOverview(); loadDevices(); }); }
@@ -287,7 +330,7 @@ function renderDetail() {
     <div class="card">
       <div class="row" style="margin-bottom:12px">
         <h2 style="flex:1;margin:0">الأقسام والجداول — تحكم عن بُعد</h2>
-        <button class="primary" data-onclick="h32">💾 حفظ ونشر للتابلت</button>
+        <button class="primary" data-onclick="h32"><i data-ic=save></i> حفظ ونشر للتابلت</button>
       </div>
       <div class="row" id="sectionBar" style="margin-bottom:10px"></div>
       <div class="row subtle" id="sectionMeta" style="margin-bottom:12px"></div>
@@ -300,7 +343,7 @@ function renderDetail() {
         <table id="eventsTbl"><thead><tr><th>الوقت</th><th>الاسم</th><th>المدة</th><th>الأيام</th><th>النغمة</th><th>الصوت</th><th></th></tr></thead><tbody></tbody></table>
       </div>
       <button class="ghost sm" style="margin-top:10px" data-onclick="h34">+ إضافة حدث</button>
-      <p class="muted">بعد الحفظ يسحب التابلت الجدول خلال ≤ 5 دقائق (أو فورًا بزر "مزامنة الآن").</p>
+      <p class="muted" data-sync-text="long"></p>
       <div id="prayerBox" style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px"></div>
     </div>
 
@@ -314,12 +357,12 @@ function renderDetail() {
         </div>
         <textarea id="annText" rows="2" placeholder="نص النداء (يُنطق بالعربية على المكبرات)…" style="width:100%"></textarea>
         <div class="row" style="margin-top:10px">
-          <button class="primary" data-onclick="h35">📢 إرسال النداء</button>
-          <button class="ghost" data-onclick="h36">🔔 جرس الآن</button>
+          <button class="primary" data-onclick="h35"><i data-ic=megaphone></i> إرسال النداء</button>
+          <button class="ghost" data-onclick="h36"><i data-ic=bell></i> جرس الآن</button>
         </div>
         <h3 style="margin-top:18px">آخر الأوامر</h3>
         ${cmds.length?cmds.map(c=>`<div class="row" style="padding:7px 0;border-bottom:1px solid #EFF1F7">
-          <span style="flex:1">${c.type==="bell"?"🔔 جرس":"📢 "+esc(c.payload?.text||"")}</span>
+          <span style="flex:1">${c.type==="bell"?"<i data-ic=bell></i> جرس":"<i data-ic=megaphone></i> "+esc(c.payload?.text||"")}</span>
           <span class="${c.delivered_at?"ok-txt":"warn-txt"}" style="font-size:13px">${c.delivered_at?"سُلّم ✓":"بانتظار التابلت…"}</span></div>`).join(""):'<p class="muted">لا أوامر بعد</p>'}
       </div>
 
@@ -380,7 +423,7 @@ function renderDetail() {
 // ── School patch actions ──
 async function patchSchool(fields) {
   const { error } = await db.from("schools").update(fields).eq("id", cur.id);
-  if (error) return show("msg","فشل: "+error.message, true);
+  if (error) return show("msg","فشل: "+MQ.err(error), true);
   const k = Object.keys(fields)[0];
   audit("school."+k, cur.id, `${esc(cur.name)}: ${k}=${JSON.stringify(fields[k])}`);
   Object.assign(cur, fields); await loadAll(); cur = schools.find(s=>s.id===cur.id); renderDetail();
@@ -390,10 +433,10 @@ function renameSchool(){ const n=prompt("اسم المدرسة:",cur.name); if(n
 function toggleActive(){ patchSchool({active:!cur.active}); }
 async function deleteSchool(){ if(!confirm(`حذف "${cur.name}" نهائيًا بكل بياناتها؟`))return;
   const {error}=await db.from("schools").delete().eq("id",cur.id);
-  if(error) return show("msg","فشل: "+error.message,true);
+  if(error) return show("msg","فشل: "+MQ.err(error),true);
   show("msg","✓ حُذفت"); backToList(); }
 async function newCode(){ const {data,error}=await db.rpc("new_activation_code",{p_school:cur.id});
-  if(error) return show("msg","فشل: "+error.message,true);
+  if(error) return show("msg","فشل: "+MQ.err(error),true);
   await loadAll(); renderDetail(); show("msg","✓ رمز جديد: "+data); }
 function copyCode(c){ navigator.clipboard?.writeText(c).then(()=>show("msg","✓ نُسخ الرمز: "+c)); }
 
@@ -420,14 +463,14 @@ function renderSectionMeta() {
 async function addSection(){
   const name=prompt("اسم القسم الجديد (مثال: الابتدائي):"); if(!name||!name.trim())return;
   const {data,error}=await db.from("sections").insert({school_id:cur.id,name:name.trim(),sort_order:cfg.sections.length}).select("id").single();
-  if(error) return show("msg","فشل: "+error.message,true);
+  if(error) return show("msg","فشل: "+MQ.err(error),true);
   cfg.sections.push({id:data.id,name:name.trim(),defaultSoundKey:"bell1",prayer:null,schedules:[{name:"صباحي",isActive:true,events:[]}]});
   curSec=cfg.sections.length-1; curSched=0; renderSectionBar(); publishConfig(true);
 }
 async function renameSection(){
   const s=cfgSec(); const name=prompt("اسم القسم:",s.name);
   if(!name||!name.trim()||name.trim()===s.name)return;
-  if(s.id){ const {error}=await db.from("sections").update({name:name.trim()}).eq("id",s.id); if(error) return show("msg","فشل: "+error.message,true); }
+  if(s.id){ const {error}=await db.from("sections").update({name:name.trim()}).eq("id",s.id); if(error) return show("msg","فشل: "+MQ.err(error),true); }
   s.name=name.trim(); renderSectionBar(); publishConfig(true);
 }
 async function deleteSection(){
@@ -436,12 +479,12 @@ async function deleteSection(){
   if(s.id){ const {count}=await db.from("devices").select("id",{count:"exact",head:true}).eq("section_id",s.id);
     if(count) return show("msg","لا يمكن حذف قسم مرتبط بأجهزة — أعد ربط الأجهزة أولًا",true); }
   if(!confirm(`حذف قسم "${s.name}" وكل جداوله؟`))return;
-  if(s.id){ const {error}=await db.from("sections").delete().eq("id",s.id); if(error) return show("msg","فشل: "+error.message,true); }
+  if(s.id){ const {error}=await db.from("sections").delete().eq("id",s.id); if(error) return show("msg","فشل: "+MQ.err(error),true); }
   cfg.sections.splice(curSec,1); curSec=0; curSched=Math.max(0,cfgScheds().findIndex(x=>x.isActive)); renderSectionBar(); publishConfig(true);
 }
 async function assignDevice(id, section){
   const {error}=await db.rpc("set_device_section",{p_device:id,p_section:section||null});
-  if(error) return show("msg","فشل: "+error.message,true);
+  if(error) return show("msg","فشل: "+MQ.err(error),true);
   const d=devices.find(x=>x.id===id); if(d) d.section_id=section||null;
   show("msg","✓ حُدّث قسم الجهاز");
 }
@@ -459,7 +502,7 @@ function renderPrayer() {
   const box = document.getElementById("prayerBox");
   if (!box || !cfgSec()) return;
   const p = cfgSec().prayer;
-  const head = `<div class="row" style="margin-bottom:10px"><h3 style="flex:1;margin:0">🕌 أذان القسم «${esc(cfgSec().name)}»</h3>
+  const head = `<div class="row" style="margin-bottom:10px"><h3 style="flex:1;margin:0"><i data-ic=moon></i> أذان القسم «${esc(cfgSec().name)}»</h3>
     <label><input type="checkbox" ${p?"checked":""} data-onchange="h49"> إعدادات أذان مستقلة</label></div>`;
   if (!p) { box.innerHTML = head + `<p class="muted">القسم يستخدم إعدادات الأذان المحفوظة على التابلت. فعّل الخيار لضبط أذان خاص بالقسم.</p>`; return; }
   const methodOpts = Object.entries(ADHAN_METHODS).map(([k,v])=>`<option value="${k}" ${p.method===k?"selected":""}>${v}</option>`).join("");
@@ -531,11 +574,12 @@ function delEvent(i){ cfgScheds()[curSched].events.splice(i,1); renderEvents(); 
 async function publishConfig(silent) {
   cfg.sections.forEach(sc=>{ if(sc.schedules.length && !sc.schedules.some(s=>s.isActive)) sc.schedules[0].isActive=true; });
   const { error } = await db.from("school_configs")
-    .update({ payload:cfg, version:cfgVersion+1, updated_at:new Date().toISOString() })
+    .update({ payload:MQ.compileCalendar(cfg), version:cfgVersion+1, updated_at:new Date().toISOString() })
     .eq("school_id", cur.id);
-  if (error) return show("msg","فشل النشر: "+error.message, true);
+  if (error) return show("msg","فشل النشر: "+MQ.err(error), true);
   cfgVersion++; audit("schedule.publish", cur.id, `${esc(cur.name)} — الإصدار ${cfgVersion}`);
-  if(!silent) show("msg",`✓ نُشر (الإصدار ${cfgVersion}) — سيصل التابلت خلال دقائق`);
+  wakeTablets(cur.id);
+  if(!silent) show("msg",`✓ نُشر (الإصدار ${cfgVersion}) — ${MQ.SYNC_SHORT}`);
 }
 
 // ── Remote control ──
@@ -546,7 +590,7 @@ async function remoteAnnounce() {
   if (!text) return show("msg","اكتب نص النداء",true);
   const target = annTargetVal();
   const { error } = await db.from("commands").insert({ school_id:cur.id, type:"announce", payload:{text,delay:0}, section_id:target });
-  if (error) return show("msg","فشل: "+error.message,true);
+  if (error) return show("msg","فشل: "+MQ.err(error),true);
   wakeTablets(cur.id);
   audit("command.announce", cur.id, `${esc(cur.name)} → ${annTargetName()}: "${text.slice(0,40)}"`);
   document.getElementById("annText").value=""; await refreshCmds(); show("msg","✓ أُرسل النداء إلى "+annTargetName());
@@ -566,7 +610,7 @@ function wakeTablets(sid) {
 async function remoteBell() {
   const target = annTargetVal();
   const { error } = await db.from("commands").insert({ school_id:cur.id, type:"bell", payload:{}, section_id:target });
-  if (error) return show("msg","فشل: "+error.message,true);
+  if (error) return show("msg","فشل: "+MQ.err(error),true);
   wakeTablets(cur.id);
   audit("command.bell", cur.id, `${esc(cur.name)} → ${annTargetName()}`);
   await refreshCmds(); show("msg","✓ أُرسل أمر الجرس إلى "+annTargetName());
@@ -591,12 +635,12 @@ async function createInvoiceFor() {
   const amount = +document.getElementById("dAmount").value; if(!amount)return;
   const months = +document.getElementById("dMonths").value;
   const { error } = await db.from("invoices").insert(providerInvoice(cur, amount, months));
-  if (error) return show("msg","فشل: "+error.message,true);
+  if (error) return show("msg","فشل: "+MQ.err(error),true);
   await loadAll(); renderDetail(); show("msg","✓ أُنشئت الفاتورة");
 }
 async function payInvoice(id){ const _i=invoices.find(i=>i.id===id); if(!confirm(`تأكيد استلام ${_i?.total??_i?.amount??""} ر.س للفاتورة ${_i?.number||"#"+id} وتمديد الاشتراك ${_i?.period_months||""} شهرًا؟`)) return;
   const {data,error}=await db.rpc("mark_invoice_paid",{p_invoice:id,p_ref:"manual"});
-  if(error) return show("msg","فشل: "+error.message,true);
+  if(error) return show("msg","فشل: "+MQ.err(error),true);
   const inv=invoices.find(i=>i.id===id);
   audit("invoice.paid", inv?.school_id, `فاتورة #${id} — الاشتراك حتى ${data}`);
   await loadAll(); if(cur){cur=schools.find(s=>s.id===cur.id);renderDetail();} else {loadInvoices();}
@@ -614,10 +658,10 @@ function loadInvoices() {
       (inv.receipt_at?'<span class="pill a">إيصال بانتظار التأكيد</span>':'<span class="pill a">معلّقة</span>');
     const id = esc(JSON.stringify(inv.id));
     const act = inv.status==="pending"?`<button class="ghost sm" data-onclick="h41" data-h41a0="${id}">✓ تأكيد الدفع</button> ${inv.source==="school"?`<button class="ghost sm danger" data-onclick="h77" data-h77a0="${id}">رفض</button>`:""} <button class="ghost sm danger" data-onclick="h42" data-h42a0="${id}">إلغاء</button>`:"";
-    const rc = inv.receipt_path?`<button class="ghost sm" data-onclick="h76" data-h76a0="${id}" title="${esc(inv.receipt_note||"")}">🧾 الإيصال</button>`:"";
-    const pf = inv.number?`<a class="ghost sm" style="text-decoration:none" target="_blank" rel="noopener" href="./proforma.html?id=${inv.id}">📄</a>`:"";
+    const rc = inv.receipt_path?`<button class="ghost sm" data-onclick="h76" data-h76a0="${id}" title="${esc(inv.receipt_note||"")}">الإيصال</button>`:"";
+    const pf = inv.number?`<a class="ghost sm" style="text-decoration:none" target="_blank" rel="noopener" href="./proforma.html?id=${inv.id}"><i data-ic=file></i></a>`:"";
     const amt = inv.total!=null?`${inv.total} ${inv.currency} <span class="muted">(${inv.amount}+ض)</span>`:`${inv.amount} ${inv.currency}`;
-    return `<tr><td class="mono" dir="ltr">${esc(inv.number||String(inv.id))}${inv.source==="school"?' <span class="muted">🏫</span>':""}</td><td>${esc(s?.name||"?")}${inv.buyer_name&&inv.buyer_name!==s?.name?`<br><span class="muted">${esc(inv.buyer_name)}</span>`:""}</td><td class="mono" dir="ltr">${amt}</td><td>${inv.period_months} شهر${inv.plan_key?" · "+esc(planName(inv.plan_key)):""}</td><td>${sp}</td><td class="mono" dir="ltr">${fmt(inv.created_at)}</td><td>${rc} ${pf} ${act}</td></tr>`;
+    return `<tr><td class="mono" dir="ltr">${esc(inv.number||String(inv.id))}${inv.source==="school"?' <span class="muted"><i data-ic=school></i></span>':""}</td><td>${esc(s?.name||"?")}${inv.buyer_name&&inv.buyer_name!==s?.name?`<br><span class="muted">${esc(inv.buyer_name)}</span>`:""}</td><td class="mono" dir="ltr">${amt}</td><td>${inv.period_months} شهر${inv.plan_key?" · "+esc(planName(inv.plan_key)):""}</td><td>${sp}</td><td class="mono" dir="ltr">${fmt(inv.created_at)}</td><td>${rc} ${pf} ${act}</td></tr>`;
   }).join("")||'<tr><td colspan="7" class="muted">لا فواتير</td></tr>';
 }
 async function viewReceipt(id) {
@@ -629,7 +673,7 @@ async function rejectInvoice(id) {
   const note = prompt("سبب الرفض (يظهر للمدرسة ويُرسل في البريد):", "لم نجد التحويل في الحساب");
   if (note === null) return;
   const { error } = await db.rpc("reject_invoice", { p_invoice:id, p_note:note });
-  if (error) return show("msg","فشل: "+error.message,true);
+  if (error) return show("msg","فشل: "+MQ.err(error),true);
   audit("invoice.reject", invoices.find(i=>i.id===id)?.school_id, `#${id} — ${note}`);
   await loadAll(); loadInvoices(); show("msg","✓ رُفض الطلب");
 }
@@ -638,7 +682,7 @@ async function createInvoice() {
   const sc = schools.find(x=>x.id===document.getElementById("invSchool").value);
   if (!sc) return;
   const { error } = await db.from("invoices").insert(providerInvoice(sc, amount, +document.getElementById("invMonths").value));
-  if(error) return show("msg","فشل: "+error.message,true);
+  if(error) return show("msg","فشل: "+MQ.err(error),true);
   await loadAll(); loadInvoices(); show("msg","✓ أُنشئت الفاتورة");
 }
 
@@ -669,13 +713,13 @@ async function renameDevice(id){
   const name = prompt("اسم الجهاز (مثال: مبنى أ — الطابق الأول):", d.name||"");
   if(!name || !name.trim() || name.trim()===d.name) return;
   const { error } = await db.from("devices").update({ name:name.trim() }).eq("id", id);
-  if(error) return show("msg","فشل: "+error.message, true);
+  if(error) return show("msg","فشل: "+MQ.err(error), true);
   audit("device.rename", d.school_id, `${esc(name.trim())}`);
   await loadAll(); cur?renderDetail():loadDevices(); show("msg","✓ حُدّث اسم الجهاز");
 }
 async function removeDevice(id){ if(!confirm("فصل هذا الجهاز؟ سيحتاج رمز تفعيل جديدًا."))return;
   const {error}=await db.from("devices").delete().eq("id",id);
-  if(error) return show("msg","فشل: "+error.message,true);
+  if(error) return show("msg","فشل: "+MQ.err(error),true);
   await loadAll(); cur?renderDetail():loadDevices(); show("msg","✓ فُصل الجهاز"); }
 
 // ── Tabs ──
@@ -706,7 +750,7 @@ async function saveProfile() {
   const full_name = document.getElementById("accName").value.trim();
   const phone = document.getElementById("accPhone").value.trim();
   const { error } = await db.from("profiles").upsert({ user_id: actorId, full_name, phone, updated_at: new Date().toISOString() });
-  document.getElementById("accMsg").textContent = error ? "فشل: " + error.message : "✓ حُفظت بياناتك.";
+  document.getElementById("accMsg").textContent = error ? "فشل: " + MQ.err(error) : "✓ حُفظت بياناتك.";
 }
 async function changePassword() {
   const p1 = document.getElementById("accPw1").value, p2 = document.getElementById("accPw2").value;
@@ -714,7 +758,7 @@ async function changePassword() {
   if (p1.length < 6) { msg.textContent = "كلمة المرور 6 أحرف على الأقل."; return; }
   if (p1 !== p2) { msg.textContent = "كلمتا المرور غير متطابقتين."; return; }
   const { error } = await db.auth.updateUser({ password: p1 });
-  msg.textContent = error ? "فشل: " + error.message : "✓ تم تحديث كلمة المرور.";
+  msg.textContent = error ? "فشل: " + MQ.err(error) : "✓ تم تحديث كلمة المرور.";
   if (!error) { document.getElementById("accPw1").value = ""; document.getElementById("accPw2").value = ""; }
 }
 
@@ -765,7 +809,7 @@ function exportAuditCSV() {
   if (!rows.length) return show("msg","لا عمليات للتصدير", true);
   const head = ["العملية","الكود","المدرسة","التفاصيل","الوقت"];
   const body = rows.map(r=>{ const s=schools.find(x=>x.id===r.school_id);
-    return [AUDIT_LABELS[r.action]||r.action, r.action, s?.name||"", r.detail||"", new Date(r.created_at).toLocaleString("ar-SA")]; });
+    return [AUDIT_LABELS[r.action]||r.action, r.action, s?.name||"", r.detail||"", MQ.dt(r.created_at)]; });
   downloadCSV(`audit-log-${new Date().toISOString().slice(0,10)}.csv`, head, body);
 }
 // Generic CSV download with UTF-8 BOM so Excel reads Arabic correctly.
@@ -820,13 +864,13 @@ async function generateAlerts() {
   show("msg","… جارٍ فحص الاشتراكات والأجهزة");
   const { data, error } = await db.functions.invoke("alerts", { body:{} });
   const e = error || data?.error;
-  if (e) return show("msg","تعذّر التوليد — تأكد من نشر دالة alerts. "+(data?.error||e.message||""), true);
+  if (e) return show("msg","تعذّر التوليد — تأكد من نشر دالة alerts. "+(data?.error||MQ.err(e)), true);
   await renderAlerts(); await loadNotifCount();
   show("msg",`✓ اكتمل الفحص — ${data.created||0} تنبيه جديد`);
 }
 async function markNotif(id) {
   const { error } = await db.from("notifications").update({ status:"read" }).eq("id", id);
-  if (error) return show("msg","فشل: "+error.message, true);
+  if (error) return show("msg","فشل: "+MQ.err(error), true);
   const n = NOTIFS.find(x=>x.id===id); if (n) n.status="read";
   drawAlerts(); loadNotifCount();
 }
@@ -843,7 +887,7 @@ function renderPlans() {
   const form = editingPlan !== null ? planForm() : "";
   const rows = PLANS.map(p=>`<tr>
       <td><b>${esc(p.name_ar)}</b> <code>${esc(p.key)}</code></td>
-      <td class="mono" dir="ltr">${Number(p.price).toLocaleString("ar")} ${esc(p.currency)}</td>
+      <td class="mono" dir="ltr">${Number(p.price).toLocaleString("en-US")} ${esc(p.currency)}</td>
       <td>${p.billing_months} شهر</td>
       <td>${(p.features||[]).length} ميزة</td>
       <td>${p.active?'<span class="pill g">مفعّلة</span>':'<span class="pill r">موقوفة</span>'}</td>
@@ -892,18 +936,18 @@ async function savePlan() {
     sort_order: (editingPlan && PLANS.find(p=>p.key===editingPlan)?.sort_order) || (PLANS.length+1),
   };
   const { error } = await db.from("plans").upsert(rec);
-  if (error) return show("msg","فشل: "+error.message, true);
+  if (error) return show("msg","فشل: "+MQ.err(error), true);
   editingPlan = null; await loadAll(); renderPlans(); show("msg","✓ حُفظت الباقة");
 }
 async function deletePlan(key) {
   if (schools.some(s=>s.plan===key)) return show("msg","لا يمكن حذف باقة مستخدمة من مدارس", true);
   if (!confirm(`حذف باقة "${planName(key)}"؟`)) return;
   const { error } = await db.from("plans").delete().eq("key", key);
-  if (error) return show("msg","فشل: "+error.message, true);
+  if (error) return show("msg","فشل: "+MQ.err(error), true);
   await loadAll(); renderPlans(); show("msg","✓ حُذفت الباقة");
 }
-function show(id,text,isError){ const el=document.getElementById(id); el.textContent=text; el.className="msg "+(isError?"err":"ok"); setTimeout(()=>{el.className="msg";},6000); }
-function fmt(ts){ return ts?new Date(ts).toLocaleString("ar-SA",{dateStyle:"short",timeStyle:"short"}):"—"; }
+function show(id,text,isError){ const el=document.getElementById(id); el.textContent=MQ.arText(text); el.className="msg "+(isError?"err":"ok"); clearTimeout(el._t); if(!isError) el._t=setTimeout(()=>{el.className="msg";},5000); }
+function fmt(ts){ return MQ.dt(ts); }
 function esc(s) { return String(s ?? "").replace(/[&<>"'`]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "`": "&#96;" }[c])); }
 
 init();

@@ -14,7 +14,7 @@ document.getElementById("printBtn").onclick = () => window.print();
   const fail = m => { root.innerHTML = `<div class="err">${m}<p><a href="./index.html">تسجيل الدخول</a></p></div>`; };
   const id = Number(new URLSearchParams(location.search).get("id"));
   const { data: { session } } = await db.auth.getSession();
-  if (!session) return fail("سجّل الدخول إلى لوحة المدرسة أولًا ثم افتح الفاتورة من «💳 الاشتراك».");
+  if (!session) return fail("سجّل الدخول إلى لوحة المدرسة أولًا ثم افتح الفاتورة من «الاشتراك».");
   if (!id) return fail("رقم الفاتورة غير صحيح.");
   const { data: inv } = await db.from("invoices").select("*").eq("id", id).maybeSingle();
   if (!inv) return fail("الفاتورة غير موجودة.");
@@ -55,7 +55,7 @@ document.getElementById("printBtn").onclick = () => window.print();
     <div class="box"><h3>طريقة الدفع: تحويل بنكي باسم ${SELLER.ar}</h3>
       <table style="margin:6px 0 0"><thead><tr><th>البنك</th><th>IBAN</th></tr></thead><tbody>
       ${BANKS.map(([b, i]) => `<tr><td>${b}</td><td class="n">${iban(i)}</td></tr>`).join("")}</tbody></table></div>
-    <div class="note">• اكتب رقم الفاتورة <b class="mono" dir="ltr">${esc(inv.number || "")}</b> في وصف التحويل، ثم ارفع الإيصال من «💳 الاشتراك» في لوحة المدرسة.<br>
+    <div class="note">• اكتب رقم الفاتورة <b class="mono" dir="ltr">${esc(inv.number || "")}</b> في وصف التحويل، ثم ارفع الإيصال من «<i data-ic=card></i> الاشتراك» في لوحة المدرسة.<br>
       • هذه فاتورة مبدئية وليست فاتورة ضريبية؛ تصدر الفاتورة الضريبية بعد استلام المبلغ.<br>
       • يُمدَّد الاشتراك فور تأكيد التحويل، ويستمر الجرس دون توقف خلال المراجعة.</div>
     <footer>${SELLER.ar} · ${SELLER.en} · VAT ${SELLER.vat} · CR ${SELLER.cr} · meeqat.me</footer>
