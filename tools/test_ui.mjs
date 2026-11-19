@@ -77,7 +77,7 @@ eq(MQ.dayPlan(ranged.sections[0], [], "2027-02-20").schedule.name, "رمضان",
 // ── static checks (regressions) ──
 const files = fs.readdirSync(ROOT).filter(f => /\.(html|js|txt|xml)$/.test(f));
 const read = f => fs.readFileSync(path.join(ROOT, f), "utf8");
-const panels = ["index", "manager", "admin", "gate", "signup", "reset", "onboarding", "pickup-admin", "proforma"];
+const panels = ["index", "manager", "admin", "gate", "signup", "reset", "onboarding", "pickup-admin", "proforma", "pro-admin"];
 for (const f of files) {
   const s = read(f);
   ok(!s.includes("966541301200"), f + ": owner mobile must not appear (company WhatsApp 966535313495)");
