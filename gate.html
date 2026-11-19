@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://meeqat-api.tripleodoo.com wss://meeqat-api.tripleodoo.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#062A1F">
 <title>ميقات — شاشة البوابة</title>
@@ -58,9 +59,11 @@
   .msg.err { color: var(--red); }
   #login { max-width: 420px; margin: 12vh auto; background: var(--enamel); border-radius: 22px; padding: 28px; display: flex; flex-direction: column; gap: 12px; }
   #login h2 { margin: 0 0 6px; }
+  #login .fl { font-size: 14px; font-weight: 600; margin: 0 0 -6px; opacity: .85; }
   .toolbar { display: flex; gap: 10px; align-items: center; }
   body.kiosk header .toolbar .ghost { display: none; }
 </style>
+<link rel="stylesheet" href="common.css?v=18">
 </head>
 <body>
 <header>
@@ -70,7 +73,7 @@
   <span class="live" id="live"><i></i><span id="liveText">غير متصل</span></span>
   <div class="toolbar" id="toolbar" style="display:none">
     <select id="gateFilter" data-onchange="g4" title="البوابة"></select>
-    <button class="btn ghost" data-onclick="g5" title="ملء الشاشة">⛶</button>
+    <button class="btn ghost" data-onclick="g5" title="ملء الشاشة" aria-label="ملء الشاشة"><i data-ic=maximize></i></button>
     <button class="btn ghost" id="logoutBtn" data-onclick="g6">خروج</button>
   </div>
   <span class="clock mono" id="clock"></span>
@@ -78,10 +81,13 @@
 
 <div id="login" style="display:none">
   <h2>تسجيل دخول مشرف البوابة</h2>
-  <input id="email" type="email" placeholder="البريد الإلكتروني" dir="ltr">
-  <input id="password" type="password" placeholder="كلمة المرور" dir="ltr">
+  <label class="fl" for="email">البريد الإلكتروني</label>
+  <input id="email" type="email" placeholder="name@school.sa" dir="ltr" autocomplete="username">
+  <label class="fl" for="password">كلمة المرور</label>
+  <input id="password" type="password" dir="ltr" autocomplete="current-password">
   <button class="btn mint" data-onclick="g1">دخول</button>
-  <div class="msg" id="loginMsg"></div>
+  <div class="msg" id="loginMsg" role="status"></div>
+  <div id="authHelp" data-auth-help class="dark"></div>
 </div>
 
 <main id="app" style="display:none">
@@ -104,6 +110,7 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js" integrity="sha384-2zrRDgDHSYB/GN3nFW3fsZXoxEhKIr3N2h63Tc6DEOB9JJdFIu8xMJT2Cph/gBil" crossorigin="anonymous"></script>
-<script src="gate.js"></script>
+<script src="common.js?v=18"></script>
+<script src="gate.js?v=18"></script>
 </body>
 </html>

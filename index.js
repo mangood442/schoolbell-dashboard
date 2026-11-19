@@ -2,7 +2,7 @@ const SUPABASE_URL = "https://meeqat-api.tripleodoo.com";
 const SUPABASE_KEY = "sb_publishable_D0YQfRkraujKgNEVpSNKhw_YMvm2oB7";
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const DAY_NAMES = ["ن", "ث", "أر", "خ", "ج", "س", "ح"]; // ISO: الاثنين..الأحد (bit 0 = الاثنين)
+const DAY_NAMES = ["اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت", "أحد"]; // ISO: bit 0 = الاثنين
 const DAY_ORDER = [6, 0, 1, 2, 3, 4, 5];                 // عرضًا: الأحد أولاً
 const SOUNDS = { bell1: "جرس كهربائي", bell2: "جرس برونزي", bell3: "لحن ترحيبي", bell4: "دينغ دونغ", bell5: "غونغ هادئ" };
 
@@ -40,6 +40,7 @@ function defPrayer() { return { enabled: true, latitude: 24.7136, longitude: 46.
 
 let schoolId = null, config = { v: 2, sections: [] }, configVersion = 0;
 let me = null, myRole = "admin";
+const canWrite = () => myRole === "admin" || myRole === "manager";
 let curSection = 0, curSched = 0;
 function sec() { return config.sections[curSection]; }
 function secScheds() { return sec() ? sec().schedules : []; }
@@ -50,7 +51,7 @@ async function login() {
     email: document.getElementById("email").value.trim(),
     password: document.getElementById("password").value,
   });
-  if (error) return show("loginMsg", "فشل الدخول: " + error.message, true);
+  if (error) return show("loginMsg", MQ.loginError(error), true);
   init();
 }
 
@@ -65,6 +66,7 @@ async function init() {
   if (!membership) return showUnlinked();
   schoolId = membership.school_id;
   myRole = membership.role || "admin";
+  applyRole();
   // Gate supervisors (ميقات – ولي الأمر) only use the gate board.
   if (myRole === "gate") { location.replace("./gate.html"); return; }
 
@@ -85,17 +87,29 @@ async function init() {
 
 document.getElementById("logoutBtn").onclick = async () => { await db.auth.signOut(); location.reload(); };
 
-// ─── Config normalization (v2 sections; accepts legacy {schedules:[]}) ────────
-function normalizeConfig(p) {
-  const normSec = s => ({
-    id: s.id ?? null, name: s.name || "قسم", defaultSoundKey: s.defaultSoundKey || "bell1",
-    prayer: s.prayer || null, schedules: Array.isArray(s.schedules) ? s.schedules : [],
-  });
-  const scenes = p && Array.isArray(p.scenes) ? p.scenes : [];   // preserve smart-device scenes
-  if (p && Array.isArray(p.sections)) return { v: 2, sections: p.sections.map(normSec), scenes };
-  const scheds = p && Array.isArray(p.schedules) ? p.schedules : [];   // legacy
-  return { v: 2, sections: [normSec({ name: "عام", schedules: scheds })], scenes };
+// ─── Config normalization (v2 sections; keeps scenes + cloud calendar) — common.js ──
+function normalizeConfig(p) { return MQ.normalizeConfig(p); }
+
+// ─── Role-aware UI (MQ-UX-08): viewers see everything, can change nothing ────
+function applyRole() {
+  const ro = !canWrite();
+  document.body.classList.toggle("ro", ro);
+  const b = document.getElementById("roBanner"); if (b) b.hidden = !ro;
+  if (ro) lockReadOnly(document.getElementById("app"));
 }
+function lockReadOnly(root) {
+  if (canWrite() || !root) return;
+  root.querySelectorAll("section input, section select, section textarea, section button").forEach(el => {
+    if (el.closest("[data-ro-ok]") || el.hasAttribute("data-ro-ok")) return;
+    if (el.tagName === "BUTTON" && /^(تحديث|إغلاق|تم)$/.test(el.textContent.trim())) return;
+    if (el.tagName === "BUTTON" && (el.classList.contains("sched-pill") || el.classList.contains("sec-pill"))) return;
+    if (el.type === "file") return;
+    el.disabled = true;
+    if (el.tagName === "BUTTON") el.title = "للعرض فقط — اطلب التعديل من مدير الحساب";
+  });
+}
+new MutationObserver(() => { if (document.body.classList.contains("ro")) lockReadOnly(document.getElementById("app")); })
+  .observe(document.getElementById("app"), { childList: true, subtree: true });
 
 async function loadConfig() {
   const { data } = await db.from("school_configs").select("version, payload").maybeSingle();
@@ -119,7 +133,7 @@ function renderSectionBar() {
     bar.appendChild(b);
   });
   const add = document.createElement("button");
-  add.className = "ghost"; add.textContent = "+ قسم"; add.onclick = addSection;
+  add.className = "ghost"; add.innerHTML = MQ.icon("plus") + " قسم"; add.onclick = addSection; add.setAttribute("data-write", "");
   bar.appendChild(add);
   renderSectionMeta();
 }
@@ -129,11 +143,11 @@ function renderSectionMeta() {
   if (!s) { meta.innerHTML = ""; return; }
   meta.innerHTML = "";
   const soundLabel = document.createElement("label"); soundLabel.className = "muted"; soundLabel.textContent = "الصوت الافتراضي للقسم:";
-  const soundSel = document.createElement("select");
+  const soundSel = document.createElement("select"); soundSel.id = "secDefSound"; soundLabel.htmlFor = "secDefSound";
   fillSoundSelect(soundSel, s.defaultSoundKey || "bell1");
   soundSel.onchange = () => { s.defaultSoundKey = soundSel.value; };
-  const rename = document.createElement("button"); rename.className = "ghost"; rename.textContent = "تعديل اسم القسم"; rename.onclick = renameSection;
-  const del = document.createElement("button"); del.className = "ghost danger"; del.textContent = "حذف القسم"; del.onclick = deleteSection;
+  const rename = document.createElement("button"); rename.className = "ghost"; rename.textContent = "تعديل اسم القسم"; rename.onclick = renameSection; rename.setAttribute("data-write", "");
+  const del = document.createElement("button"); del.className = "ghost danger"; del.textContent = "حذف القسم"; del.onclick = deleteSection; del.setAttribute("data-write", "");
   const spacer = document.createElement("span"); spacer.style.flex = "1";
   meta.append(soundLabel, soundSel, spacer, rename, del);
 }
@@ -143,7 +157,7 @@ async function addSection() {
   const { data, error } = await db.from("sections")
     .insert({ school_id: schoolId, name: name.trim(), sort_order: config.sections.length })
     .select("id").single();
-  if (error) return show("msg", "فشل: " + error.message, true);
+  if (error) return show("msg", "فشل: " + MQ.err(error), true);
   config.sections.push({ id: data.id, name: name.trim(), defaultSoundKey: "bell1", prayer: null, schedules: [{ name: "صباحي", isActive: true, events: [] }] });
   curSection = config.sections.length - 1; curSched = 0;
   renderSectionBar(); renderSchedules(); fillTargets();
@@ -152,7 +166,7 @@ async function addSection() {
 async function renameSection() {
   const s = sec(); const name = prompt("اسم القسم:", s.name);
   if (!name || !name.trim() || name.trim() === s.name) return;
-  if (s.id) { const { error } = await db.from("sections").update({ name: name.trim() }).eq("id", s.id); if (error) return show("msg", "فشل: " + error.message, true); }
+  if (s.id) { const { error } = await db.from("sections").update({ name: name.trim() }).eq("id", s.id); if (error) return show("msg", "فشل: " + MQ.err(error), true); }
   s.name = name.trim(); renderSectionBar(); fillTargets(); saveConfig(true);
 }
 async function deleteSection() {
@@ -163,7 +177,7 @@ async function deleteSection() {
     if (count) return show("msg", "لا يمكن حذف قسم مرتبط بأجهزة — أعد ربط الأجهزة أولًا", true);
   }
   if (!confirm(`حذف قسم "${s.name}" وكل جداوله؟`)) return;
-  if (s.id) { const { error } = await db.from("sections").delete().eq("id", s.id); if (error) return show("msg", "فشل: " + error.message, true); }
+  if (s.id) { const { error } = await db.from("sections").delete().eq("id", s.id); if (error) return show("msg", "فشل: " + MQ.err(error), true); }
   config.sections.splice(curSection, 1); curSection = 0; curSched = Math.max(0, secScheds().findIndex(x => x.isActive));
   renderSectionBar(); renderSchedules(); fillTargets(); saveConfig(true);
 }
@@ -175,7 +189,7 @@ function renderSchedules() {
   secScheds().forEach((s, i) => {
     const b = document.createElement("button");
     b.className = "sched-pill" + (i === curSched ? " active" : "");
-    b.textContent = s.name + (s.isActive ? " ✓" : "");
+    b.textContent = s.name + (s.isActive ? " ✓" : "") + (s.activeFrom && s.activeTo ? " · " + MQ.isoToSlash(s.activeFrom).slice(5) + "–" + MQ.isoToSlash(s.activeTo).slice(5) : "");
     b.onclick = () => { curSched = i; renderSchedules(); };
     list.appendChild(b);
   });
@@ -189,7 +203,7 @@ function renderPrayer() {
   const box = document.getElementById("prayerBox");
   if (!box || !sec()) return;
   const p = sec().prayer;
-  const head = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1;margin:0">🕌 أذان القسم «${esc(sec().name)}»</h2>
+  const head = `<div class="row" style="margin-bottom:10px"><h2 style="flex:1;margin:0"><i data-ic=moon></i> أذان القسم «${esc(sec().name)}»</h2>
     <label><input type="checkbox" ${p ? "checked" : ""} data-onchange="h26"> إعدادات أذان مستقلة لهذا القسم</label></div>`;
   if (!p) {
     box.innerHTML = head + `<p class="muted">هذا القسم يستخدم إعدادات الأذان المحفوظة على جهاز التابلت. فعّل الخيار أعلاه لضبط أذان خاص بهذا القسم يُنشر لأجهزته.</p>`;
@@ -223,15 +237,18 @@ function renderMeta() {
   const meta = document.getElementById("schedMeta");
   meta.innerHTML = "";
   if (!s) return;
+  const nameInp = inp(s.name, v => { s.name = v; renderSchedules(); }); nameInp.setAttribute("aria-label", "اسم الجدول");
   meta.append(
-    field("الاسم", inp(s.name, v => s.name = v)),
-    checkbox("الجدول النشط", s.isActive, v => {
+    field("الاسم", nameInp),
+    checkbox("الجدول النشط (المعتاد)", s.isActive, v => {
       if (v) secScheds().forEach((x, i) => x.isActive = i === curSched);
       else s.isActive = false;
       renderSchedules();
     }),
+    periodEditor(s),
   );
   const del = document.createElement("button");
+  del.setAttribute("data-write", "");
   del.className = "ghost danger"; del.textContent = "حذف الجدول";
   del.onclick = () => { if (secScheds().length > 1 && confirm("حذف " + s.name + "؟")) { secScheds().splice(curSched, 1); curSched = 0; renderSchedules(); } };
   meta.appendChild(del);
@@ -243,18 +260,30 @@ function renderEvents() {
   body.innerHTML = "";
   if (!s) return;
   s.events.sort((a, b) => a.startMinuteOfDay - b.startMinuteOfDay);
+  if (!s.events.length) {
+    body.innerHTML = `<tr><td colspan="9" class="muted" style="padding:18px 8px">لا توجد أحداث في هذا الجدول بعد. أضف حدثاً، أو استخدم «تعبئة جدول نموذجي» من بطاقة «ابدأ هنا».</td></tr>`;
+    return;
+  }
   s.events.forEach((e, i) => {
-    const tr = document.createElement("tr");
+    const tr = document.createElement("tr"); tr.className = "ev";
+    const nm = inp(e.name, v => e.name = v); nm.setAttribute("aria-label", "اسم الحدث");
+    const dur = numInp(e.durationMin ?? "", v => e.durationMin = v === "" ? null : Math.max(0, +v || 0), 72);
+    dur.className = "ev-num"; dur.setAttribute("aria-label", "المدة بالدقائق"); dur.min = 0; dur.max = 600; dur.inputMode = "numeric"; dur.dir = "ltr";
+    const vol = numInp(Math.round((e.volume ?? 1) * 100), v => e.volume = Math.min(100, Math.max(0, +v || 0)) / 100, 72);
+    vol.className = "ev-num"; vol.setAttribute("aria-label", "مستوى الصوت بالمئة"); vol.min = 0; vol.max = 100; vol.inputMode = "numeric"; vol.dir = "ltr";
+    const en = checkbox("مفعّل", e.enabled !== false, v => e.enabled = v);
+    const snd = soundSelect(e); snd.setAttribute("aria-label", "النغمة");
+    const del = delBtn(() => { s.events.splice(i, 1); renderEvents(); }); del.setAttribute("aria-label", "حذف الحدث «" + (e.name || "") + "»"); del.setAttribute("data-write", "");
     tr.append(
-      td(timeInput(e)),
-      td(inp(e.name, v => e.name = v)),
-      td(numInp(e.durationMin ?? "", v => e.durationMin = v === "" ? null : +v, 70)),
-      td(daysBoxes(e)),
-      td(soundSelect(e)),
-      td(numInp(Math.round((e.volume ?? 1) * 100), v => e.volume = Math.min(100, Math.max(0, +v || 0)) / 100, 60)),
-      td(checkbox("", e.enabled !== false, v => e.enabled = v)),
-      td(deviceActionsBtn(e)),
-      td(delBtn(() => { s.events.splice(i, 1); renderEvents(); })),
+      tdl("الوقت (24 ساعة)", timeInput(e), "c-time"),
+      tdl("الاسم", nm, "c-name"),
+      tdl("المدة (د)", dur, "c-dur"),
+      tdl("الأيام", daysBoxes(e), "c-days"),
+      tdl("النغمة", snd, "c-sound"),
+      tdl("الصوت %", vol, "c-vol"),
+      tdl("الحالة", en, "c-en"),
+      tdl("أجهزة ذكية", deviceActionsBtn(e), "c-dev"),
+      tdl("", del, "c-act"),
     );
     body.appendChild(tr);
   });
@@ -278,13 +307,17 @@ function addSchedule() {
 }
 
 async function saveConfig(silent) {
+  if (!canWrite()) return show("msg", "صلاحيتك مشاهدة فقط — اطلب التعديل من مدير الحساب.", true);
+  const bad = timeErrors(); if (bad) return show("msg", bad, true);
   config.sections.forEach(sc => { if (sc.schedules.length && !sc.schedules.some(s => s.isActive)) sc.schedules[0].isActive = true; });
   const { error } = await db.from("school_configs")
-    .update({ payload: config, version: configVersion + 1, updated_at: new Date().toISOString() })
+    .update({ payload: MQ.compileCalendar(config), version: configVersion + 1, updated_at: new Date().toISOString() })
     .eq("school_id", schoolId);
-  if (error) return show("msg", "فشل الحفظ: " + error.message, true);
+  if (error) return show("msg", "تعذّر الحفظ: " + MQ.err(error), true);
   configVersion += 1;
-  if (!silent) show("msg", "✓ حُفظ (الإصدار " + configVersion + ") — سيصل للتابلت خلال دقائق");
+  wakeTablets(schoolId);          // realtime nudge → tablets pull now (25 s poll is the fallback)
+  watchDelivery(configVersion);
+  if (!silent) show("msg", "✓ حُفظ الإصدار " + configVersion + " — " + MQ.SYNC_SHORT + ". تابع «وصل للتابلت ✓» أعلى الجدول.");
 }
 
 function fillTargets() {
@@ -302,10 +335,11 @@ async function loadLogs() {
     .select("event_name, planned_at, executed_at, status, error")
     .order("planned_at", { ascending: false }).limit(200);
   document.getElementById("logsBody").innerHTML = (data || []).map(l => {
-    const drift = l.executed_at ? (new Date(l.executed_at) - new Date(l.planned_at)) + " ms" : "—";
-    return `<tr><td>${esc(l.event_name)}</td><td dir="ltr">${fmt(l.planned_at)}</td><td dir="ltr">${drift}</td>
-      <td class="status-${esc(l.status)}">${esc(l.status)}</td><td>${esc(l.error || "")}</td></tr>`;
-  }).join("");
+    const ms = l.executed_at ? (new Date(l.executed_at) - new Date(l.planned_at)) : null;
+    const drift = ms == null ? "—" : (Math.abs(ms) < 1000 ? ms + " ملّي ث" : (ms / 1000).toFixed(1) + " ث");
+    return `<tr><td>${esc(l.event_name)}</td><td dir="ltr" class="mono">${fmt(l.planned_at)}</td><td dir="ltr" class="mono">${drift}</td>
+      <td class="status-${esc(l.status)}">${esc(MQ.statusAr(l.status))}</td><td>${esc(l.error ? MQ.arText(l.error) : "")}</td></tr>`;
+  }).join("") || '<tr><td colspan="5" class="muted">لا توجد سجلات بعد — تظهر هنا بعد أول جرس يقرعه التابلت.</td></tr>';
 }
 
 function announceTarget() { return document.getElementById("announceTarget").value || null; }
@@ -317,14 +351,14 @@ async function sendAnnounce() {
   const delay = +document.getElementById("announceDelay").value || 0;
   const { error } = await db.from("commands").insert({ school_id: schoolId, type: "announce", payload: { text, delay }, section_id: announceTarget() });
   if (!error) wakeTablets(schoolId);
-  show("msg", error ? "فشل: " + error.message : "✓ أُرسل النداء إلى " + targetLabel(), !!error);
+  show("msg", error ? "فشل: " + MQ.err(error) : "✓ أُرسل النداء إلى " + targetLabel(), !!error);
   loadCommands();
 }
 
 async function sendBell() {
   const { error } = await db.from("commands").insert({ school_id: schoolId, type: "bell", payload: {}, section_id: announceTarget() });
   if (!error) wakeTablets(schoolId);
-  show("msg", error ? "فشل: " + error.message : "✓ أُرسل أمر الجرس إلى " + targetLabel(), !!error);
+  show("msg", error ? "فشل: " + MQ.err(error) : "✓ أُرسل أمر الجرس إلى " + targetLabel(), !!error);
   loadCommands();
 }
 
@@ -346,34 +380,66 @@ async function loadCommands() {
     .select("type, payload, created_at, delivered_at")
     .order("id", { ascending: false }).limit(20);
   document.getElementById("cmdBody").innerHTML = (data || []).map(c =>
-    `<tr><td>${c.type === "bell" ? "🔔 جرس" : "📢 " + esc(c.payload?.text || "")}</td>
+    `<tr><td>${c.type === "bell" ? "<i data-ic=bell></i> جرس" : "<i data-ic=megaphone></i> " + esc(c.payload?.text || "")}</td>
      <td dir="ltr">${fmt(c.created_at)}</td>
-     <td>${c.delivered_at ? "✓ " + fmt(c.delivered_at) : "بانتظار التابلت…"}</td></tr>`
-  ).join("");
+     <td>${c.delivered_at ? "✓ وصل " + fmt(c.delivered_at) : "بانتظار التابلت…"}</td></tr>`
+  ).join("") || '<tr><td colspan="3" class="muted">لم تُرسل أوامر بعد.</td></tr>';
 }
 
+async function fetchDevices() {
+  let r = await db.from("devices").select("id, name, app_version, last_seen_at, section_id, config_delivered_version, config_delivered_at").order("last_seen_at", { ascending: false });
+  if (r.error) r = await db.from("devices").select("id, name, app_version, last_seen_at, section_id").order("last_seen_at", { ascending: false });
+  return r.data || [];
+}
+// Per-device delivery chip: «وصل الإصدار N ✓ 10:24:05» / waiting / offline (MQ-UX-01)
+function deliveryChip(d, want) {
+  const online = d.last_seen_at && (Date.now() - new Date(d.last_seen_at).getTime()) < 90000;
+  const got = d.config_delivered_version;
+  if (got != null && got >= want) return `<span class="sync-chip ok">${MQ.icon("check")} وصل الإصدار ${got} · ${MQ.time(d.config_delivered_at, true)}</span>`;
+  if (!online) return `<span class="sync-chip off">${MQ.icon("wifi")} غير متصل — آخر اتصال ${esc(MQ.ago(d.last_seen_at))}؛ سيستلم التعديل عند عودته</span>`;
+  return `<span class="sync-chip wait">${MQ.icon("clock")} بانتظار المزامنة${got != null ? " (لديه الإصدار " + got + ")" : ""}</span>`;
+}
 async function loadDevices() {
-  const { data } = await db.from("devices").select("id, name, app_version, last_seen_at, section_id").order("last_seen_at", { ascending: false });
+  const data = await fetchDevices();
   const opts = sel => `<option value="">كل المدرسة</option>` +
     config.sections.filter(s => s.id).map(s => `<option value="${s.id}" ${s.id === sel ? "selected" : ""}>${esc(s.name)}</option>`).join("");
-  document.getElementById("devicesBody").innerHTML = (data || []).map(d =>
+  document.getElementById("devicesBody").innerHTML = data.map(d =>
     `<tr><td>${esc(d.name)}</td>
-      <td><select data-onchange="h35" data-h35a0="${esc(d.id)}">${opts(d.section_id)}</select></td>
-      <td dir="ltr">${esc(d.app_version || "—")}</td>
-      <td dir="ltr">${fmt(d.last_seen_at)}</td>
+      <td><select aria-label="قسم الجهاز ${esc(d.name)}" data-onchange="h35" data-h35a0="${esc(d.id)}">${opts(d.section_id)}</select></td>
+      <td dir="ltr" class="mono">${esc(d.app_version || "—")}</td>
+      <td>${esc(MQ.ago(d.last_seen_at))}</td>
+      <td>${deliveryChip(d, configVersion)}</td>
       <td><button class="ghost" data-onclick="h36" data-h36a0="${esc(d.id)}" data-h36a1="${esc(JSON.stringify(d.name))}">تسمية</button></td></tr>`
-  ).join("") || '<tr><td colspan="5" class="muted">لا أجهزة مرتبطة بعد</td></tr>';
+  ).join("") || '<tr><td colspan="6" class="muted">لا أجهزة مرتبطة بعد. ثبّت تطبيق ميقات على التابلت وأدخل رمز التفعيل — <a href="/download.html" target="_blank" rel="noopener">تنزيل التطبيق</a>.</td></tr>';
+  renderSyncStatus(data);
+}
+function renderSyncStatus(devs) {
+  const el = document.getElementById("syncStatus"); if (!el) return;
+  if (!devs.length) { el.innerHTML = `<span class="sync-chip off">${MQ.icon("tablet")} لا يوجد تابلت مرتبط بعد</span>`; return; }
+  el.innerHTML = `<span class="muted">التسليم للأجهزة:</span>` + devs.map(d => `<span title="${esc(d.name)}">${esc(d.name)}: ${deliveryChip(d, configVersion)}</span>`).join("");
+}
+let _watch = null;
+function watchDelivery(version) {
+  clearInterval(_watch);
+  const t0 = Date.now();
+  const tick = async () => {
+    const devs = await fetchDevices();
+    renderSyncStatus(devs);
+    const pending = devs.filter(d => d.last_seen_at && (Date.now() - new Date(d.last_seen_at).getTime()) < 90000 && !(d.config_delivered_version >= version));
+    if (!pending.length || Date.now() - t0 > 75000) clearInterval(_watch);
+  };
+  tick(); _watch = setInterval(tick, 3000);
 }
 async function assignDevice(id, section) {
   const { error } = await db.rpc("set_device_section", { p_device: id, p_section: section || null });
-  if (error) return show("msg", "فشل: " + error.message, true);
+  if (error) return show("msg", "فشل: " + MQ.err(error), true);
   show("msg", "✓ حُدّث قسم الجهاز");
 }
 async function renameDevice(id, currentName) {
   const name = prompt("اسم الجهاز:", currentName || "");
   if (!name || !name.trim()) return;
   const { error } = await db.rpc("set_device_name", { p_device: id, p_name: name.trim() });
-  if (error) return show("msg", "فشل: " + error.message, true);
+  if (error) return show("msg", "فشل: " + MQ.err(error), true);
   loadDevices(); show("msg", "✓ حُدّث اسم الجهاز");
 }
 
@@ -455,7 +521,7 @@ function importConfig(file) {
       curSched = Math.max(0, secScheds().findIndex(s => s.isActive));
       renderSectionBar(); renderSchedules();
       show("msg", "✓ استوردت جداول القسم — راجعها ثم اضغط \"حفظ ونشر\" للتطبيق");
-    } catch (e) { show("msg", "تعذّر الاستيراد: " + e.message, true); }
+    } catch (e) { show("msg", "تعذّر الاستيراد: " + MQ.err(e), true); }
   };
   reader.readAsText(file);
   document.getElementById("importFile").value = "";
@@ -464,11 +530,12 @@ function importConfig(file) {
 // ─── UI helpers ─────────────────────────────────────────────────────────────
 function showTab(name) {
   document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
-  ["schedules", "reports", "logs", "announce", "devices", "sounds", "smart", "students", "pickup", "notices", "billing", "account"].forEach(t =>
+  ["schedules", "calendar", "reports", "logs", "announce", "devices", "sounds", "smart", "students", "pickup", "notices", "billing", "account"].forEach(t =>
     document.getElementById("tab-" + t).style.display = t === name ? "block" : "none");
   if (name === "reports") loadReports();
   if (name === "logs") loadLogs();
   if (name === "devices") loadDevices();
+  if (name === "calendar") renderCalendar();
   if (name === "announce") loadCommands();
   if (name === "sounds") renderLibrary();
   if (name === "smart") loadTuya();
@@ -514,7 +581,7 @@ async function tuyaResync(id) {
   const msg = document.getElementById("tuyaMsg");
   msg.textContent = "جارٍ تحديث المفتاح…";
   const { data, error } = await db.functions.invoke("tuya", { body: { deviceId: id, action: "resync" } });
-  if (error) msg.textContent = "فشل التحديث: " + (error.message || "");
+  if (error) msg.textContent = "فشل التحديث: " + (MQ.err(error));
   else if (data && data.error) msg.textContent = "التحديث: " + data.error;
   else { msg.textContent = "✓ حُدّث المفتاح من سحابة تويا"; await loadTuyaList(); }
 }
@@ -581,7 +648,7 @@ async function openDevicePanel(id) {
 }
 async function rawCmd(id, code, value, msgEl) {
   const { data, error } = await db.functions.invoke("tuya", { body: { deviceId: id, action: "raw", commands: [{ code, value }] } });
-  if (msgEl) msgEl.textContent = error ? ("فشل: " + error.message) : ((data && data.error) ? data.error : ((data && data.ok) ? ("✓ " + code) : "لم يُقبل الأمر"));
+  if (msgEl) msgEl.textContent = error ? ("فشل: " + MQ.err(error)) : ((data && data.error) ? data.error : ((data && data.ok) ? ("✓ " + code) : "لم يُقبل الأمر"));
 }
 
 // ─── Scenes: one tap runs several devices (stored in the config payload) ──────
@@ -591,7 +658,7 @@ function renderScenes() {
   if (!scenes().length) { box.innerHTML = '<p class="muted">لا توجد مشاهد بعد.</p>'; return; }
   box.innerHTML = scenes().map(sc => `<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap">
       <span style="flex:1"><b>${esc(sc.name)}</b> <span class="muted">· ${(sc.actions || []).length} إجراء</span></span>
-      <button class="primary" data-onclick="h37" data-h37a0="${esc(sc.id)}">▶ تشغيل</button>
+      <button class="primary" data-onclick="h37" data-h37a0="${esc(sc.id)}"><i data-ic=play></i> تشغيل</button>
       <button class="ghost" data-onclick="h38" data-h38a0="${esc(sc.id)}">تعديل</button>
       <button class="ghost danger" data-onclick="h39" data-h39a0="${esc(sc.id)}">✕</button>
     </div>`).join("");
@@ -645,7 +712,7 @@ function showSceneForm(id) {
     const footer = document.createElement("div"); footer.className = "row"; footer.style.marginTop = "12px";
     const add = document.createElement("button"); add.className = "ghost"; add.textContent = "+ إجراء"; add.disabled = !tuyaDevices.length;
     add.onclick = () => { const d = tuyaDevices[0]; sc.actions.push({ tuyaDeviceId: d.id, action: tuyaActionsFor(d.category)[0] }); draw(); };
-    const save = document.createElement("button"); save.className = "primary"; save.textContent = "💾 حفظ المشهد";
+    const save = document.createElement("button"); save.className = "primary"; save.textContent = "حفظ المشهد";
     save.onclick = () => saveScene(sc, !!id);
     const cancel = document.createElement("button"); cancel.className = "ghost"; cancel.textContent = "إلغاء"; cancel.onclick = () => { f.style.display = "none"; };
     footer.append(save, add, cancel); card.appendChild(footer);
@@ -673,16 +740,16 @@ function tuyaActionsFor(cat) {
 function renderTuya() {
   const box = document.getElementById("tuyaList");
   const status = window._tabletUp
-    ? '<div class="subtle" style="margin-bottom:10px">🟢 التابلت متصل — التحكم فوري عبر الشبكة المحلية</div>'
-    : '<div class="subtle" style="margin-bottom:10px">⚪ التابلت غير متصل — سيُستخدم التحكم السحابي (يتطلب إعداد اعتماد تويا)</div>';
+    ? '<div class="subtle" style="margin-bottom:10px"><i data-ic=dot data-ic-class=on></i> التابلت متصل — التحكم فوري عبر الشبكة المحلية</div>'
+    : '<div class="subtle" style="margin-bottom:10px"><i data-ic=dot data-ic-class=off></i> التابلت غير متصل — سيُستخدم التحكم السحابي (يتطلب إعداد اعتماد تويا)</div>';
   const list = tuyaFiltered();
   if (!list.length) { box.innerHTML = status + '<p class="muted">' + (tuyaDevices.length ? "لا أجهزة في هذا القسم." : "لا توجد أجهزة بعد. أضف جهازًا للبدء.") + '</p>'; return; }
   box.innerHTML = status + list.map(d => {
     let controls = "";
     if (d.category === "curtain") {
-      controls = `<button class="ghost" data-onclick="h40" data-h40a0="${esc(d.id)}">▲ فتح</button>
-        <button class="ghost" data-onclick="h41" data-h41a0="${esc(d.id)}">■ إيقاف</button>
-        <button class="ghost" data-onclick="h42" data-h42a0="${esc(d.id)}">▼ إغلاق</button>`;
+      controls = `<button class="ghost" data-onclick="h40" data-h40a0="${esc(d.id)}"><i data-ic=up></i> فتح</button>
+        <button class="ghost" data-onclick="h41" data-h41a0="${esc(d.id)}"><i data-ic=stop></i> إيقاف</button>
+        <button class="ghost" data-onclick="h42" data-h42a0="${esc(d.id)}"><i data-ic=down></i> إغلاق</button>`;
     } else if (d.category === "light" || d.category === "switch") {
       controls = `<button class="primary" data-onclick="h43" data-h43a0="${esc(d.id)}">تشغيل</button>
         <button class="ghost" data-onclick="h44" data-h44a0="${esc(d.id)}">إطفاء</button>`;
@@ -690,11 +757,11 @@ function renderTuya() {
     return `<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap">
       <span style="min-width:150px;flex:1"><b>${esc(d.name)}</b> <span class="muted">· ${TUYA_CATS[d.category] || d.category} · ${esc(tuyaSectionName(d.section_id))}</span></span>
       ${controls}
-      <button class="ghost" data-onclick="h45" data-h45a0="${esc(d.id)}" title="تحكم متقدّم وقراءة الحالة (كل الوظائف)">⚙ لوحة</button>
+      <button class="ghost" data-onclick="h45" data-h45a0="${esc(d.id)}" title="تحكم متقدّم وقراءة الحالة (كل الوظائف)"><i data-ic=sliders></i> لوحة</button>
       <button class="ghost" data-onclick="h46" data-h46a0="${esc(d.id)}" title="فحص الاتصال">فحص</button>
-      <button class="ghost" data-onclick="h47" data-h47a0="${esc(d.id)}" title="تحديث المفتاح من سحابة تويا">🔄</button>
+      <button class="ghost" data-onclick="h47" data-h47a0="${esc(d.id)}" title="تحديث المفتاح من سحابة تويا" aria-label="تحديث المفتاح من سحابة تويا"><i data-ic=refresh></i></button>
       <button class="ghost" data-onclick="h48" data-h48a0="${esc(d.id)}">تعديل</button>
-      <button class="ghost danger" data-onclick="h49" data-h49a0="${esc(d.id)}">✕</button>
+      <button class="ghost danger" data-onclick="h49" data-h49a0="${esc(d.id)}" aria-label="حذف ${esc(d.name)}"><i data-ic=trash></i></button>
     </div>`;
   }).join("");
 }
@@ -707,10 +774,10 @@ async function tuyaCtl(id, action, value) {
     const { error } = await db.from("commands").insert({ school_id: schoolId, type: "device",
       payload: { tuyaDeviceId: id, action, value: value ?? null }, section_id: dev?.section_id ?? null });
     if (!error) wakeTablets(schoolId);
-    msg.textContent = error ? "فشل: " + error.message : "✓ أُرسل الأمر عبر التابلت";
+    msg.textContent = error ? "فشل: " + MQ.err(error) : "✓ أُرسل الأمر عبر التابلت";
   } else {
     const { data, error } = await db.functions.invoke("tuya", { body: { deviceId: id, action, value: value ?? null } });
-    if (error) msg.textContent = "التابلت غير متصل، وتعذّر التحكم السحابي: " + (error.message || "");
+    if (error) msg.textContent = "التابلت غير متصل، وتعذّر التحكم السحابي: " + (MQ.err(error));
     else if (data && data.error) msg.textContent = "التابلت غير متصل — التحكم السحابي: " + data.error;
     else msg.textContent = "✓ عبر سحابة تويا (التابلت غير متصل)";
   }
@@ -736,7 +803,7 @@ function showTuyaForm(id) {
       <label class="muted">البروتوكول</label><select id="tzProto">${["3.3","3.1","3.4","3.5"].map(v => `<option ${d && d.protocol_version === v ? "selected" : ""}>${v}</option>`).join("")}</select></div>
     <div class="row"><label class="muted" style="width:120px">dp_map</label><input id="tzDp" dir="ltr" style="flex:1" value='${d ? esc(JSON.stringify(d.dp_map)) : TUYA_DP_TEMPLATES.light}'></div>
     <div class="row"><span style="width:120px"></span>
-      <button class="primary" data-onclick="h51" data-h51a0="${esc(id || "")}">💾 حفظ</button>
+      <button class="primary" data-onclick="h51" data-h51a0="${esc(id || "")}"><i data-ic=save></i> حفظ</button>
       <button class="ghost" data-onclick="h52">إلغاء</button></div>
   </div>`;
   document.getElementById("tzCat").value = d ? d.category : "light";
@@ -766,7 +833,7 @@ async function saveTuya(id) {
     if (!row.local_key) { document.getElementById("tuyaMsg").textContent = "Local Key مطلوب"; return; }
     ({ error } = await db.from("tuya_devices").insert(row));
   }
-  if (error) { document.getElementById("tuyaMsg").textContent = "فشل: " + error.message; return; }
+  if (error) { document.getElementById("tuyaMsg").textContent = "فشل: " + MQ.err(error); return; }
   document.getElementById("tuyaForm").style.display = "none";
   await loadTuya();
   document.getElementById("tuyaMsg").textContent = "✓ حُفظ الجهاز";
@@ -774,7 +841,7 @@ async function saveTuya(id) {
 async function deleteTuya(id) {
   if (!confirm("حذف هذا الجهاز؟")) return;
   const { error } = await db.from("tuya_devices").delete().eq("id", id);
-  if (error) { document.getElementById("tuyaMsg").textContent = "فشل: " + error.message; return; }
+  if (error) { document.getElementById("tuyaMsg").textContent = "فشل: " + MQ.err(error); return; }
   await loadTuya();
 }
 
@@ -793,10 +860,10 @@ function renderLibrary() {
   const demo = library.filter(l => !l.school_id), mine = library.filter(l => l.school_id);
   const renderRow = l => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)">
       <span style="flex:1">${esc(l.name)}</span>
-      <audio controls preload="none" src="${esc(l.url)}" style="height:34px"></audio>
+      <audio controls preload="none" src="${esc(l.url)}" style="height:34px;max-width:100%" aria-label="استماع: ${esc(l.name)}"></audio>
       ${l.school_id ? `<button class="ghost danger" data-onclick="h53" data-h53a0="${esc(l.id)}" data-h53a1="${esc(l.storage_path)}">✕</button>` : `<span class="muted mono">مشترك</span>`}
     </div>`;
-  rows.push(`<div class="subtle" style="margin:14px 0 4px"><b>المكتبة المشتركة (تجريبية)</b></div>`);
+  rows.push(`<div class="subtle" style="margin:14px 0 4px"><b>المكتبة المشتركة</b></div>`);
   rows.push(demo.length ? demo.map(renderRow).join("") : `<p class="muted">لا توجد.</p>`);
   rows.push(`<div class="subtle" style="margin:14px 0 4px"><b>أصوات مدرستك</b></div>`);
   rows.push(mine.length ? mine.map(renderRow).join("") : `<p class="muted">لم ترفع أصواتًا بعد.</p>`);
@@ -810,11 +877,11 @@ async function uploadSound(file) {
   const ext = (file.name.split(".").pop() || "mp3").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 4) || "mp3";
   const path = `school/${schoolId}/${crypto.randomUUID()}.${ext}`;
   const { error: upErr } = await db.storage.from("sounds").upload(path, file, { contentType: file.type || "audio/mpeg", upsert: false });
-  if (upErr) { msg.textContent = "فشل الرفع: " + upErr.message; return; }
+  if (upErr) { msg.textContent = "فشل الرفع: " + MQ.err(upErr); return; }
   const { data: pub } = db.storage.from("sounds").getPublicUrl(path);
   const name = (file.name.replace(/\.[^.]+$/, "") || "صوت").slice(0, 60);
   const { error: insErr } = await db.from("sound_library").insert({ school_id: schoolId, name, storage_path: path, url: pub.publicUrl, sort_order: 100 });
-  if (insErr) { msg.textContent = "فشل الحفظ: " + insErr.message; return; }
+  if (insErr) { msg.textContent = "فشل الحفظ: " + MQ.err(insErr); return; }
   document.getElementById("soundFile").value = "";
   await loadLibrary(); renderLibrary(); renderSchedules();
   msg.textContent = "✓ أُضيف الصوت إلى المكتبة.";
@@ -823,7 +890,7 @@ async function deleteSound(id, path) {
   if (!confirm("حذف هذا الصوت من المكتبة؟")) return;
   await db.storage.from("sounds").remove([path]);
   const { error } = await db.from("sound_library").delete().eq("id", id);
-  if (error) { document.getElementById("soundMsg").textContent = "فشل الحذف: " + error.message; return; }
+  if (error) { document.getElementById("soundMsg").textContent = "فشل الحذف: " + MQ.err(error); return; }
   await loadLibrary(); renderLibrary(); renderSchedules();
 }
 
@@ -839,7 +906,7 @@ async function saveProfile() {
   const full_name = document.getElementById("accName").value.trim();
   const phone = document.getElementById("accPhone").value.trim();
   const { error } = await db.from("profiles").upsert({ user_id: me.id, full_name, phone, updated_at: new Date().toISOString() });
-  document.getElementById("accMsg").textContent = error ? "فشل: " + error.message : "✓ حُفظت بياناتك.";
+  document.getElementById("accMsg").textContent = error ? "فشل: " + MQ.err(error) : "✓ حُفظت بياناتك.";
 }
 async function changePassword() {
   const p1 = document.getElementById("accPw1").value, p2 = document.getElementById("accPw2").value;
@@ -847,14 +914,16 @@ async function changePassword() {
   if (p1.length < 6) { msg.textContent = "كلمة المرور 6 أحرف على الأقل."; return; }
   if (p1 !== p2) { msg.textContent = "كلمتا المرور غير متطابقتين."; return; }
   const { error } = await db.auth.updateUser({ password: p1 });
-  if (error) { msg.textContent = "فشل: " + error.message; return; }
+  if (error) { msg.textContent = "فشل: " + MQ.err(error); return; }
   document.getElementById("accPw1").value = ""; document.getElementById("accPw2").value = "";
   msg.textContent = "✓ تم تحديث كلمة المرور.";
 }
+// Success: 5 s. Errors stay until the next message (quality standard §4).
 function show(id, text, isError) {
   const el = document.getElementById(id);
-  el.textContent = text; el.className = "msg " + (isError ? "err" : "ok");
-  setTimeout(() => { el.className = "msg"; }, 6000);
+  el.textContent = MQ.arText(text); el.className = "msg " + (isError ? "err" : "ok");
+  clearTimeout(el._t);
+  if (!isError) el._t = setTimeout(() => { el.className = "msg"; }, 5000);
 }
 // Unlinked account: guide new schools to self-onboarding instead of a dead end.
 function showUnlinked() {
@@ -871,24 +940,40 @@ function inp(value, onChange, width) {
   i.onchange = () => onChange(i.value); return i;
 }
 function numInp(value, onChange, width) { const i = inp(value, onChange, width); i.type = "number"; return i; }
+// 24-hour «HH:MM» text field: never shows AM/PM, never clipped (MQ-UX-07).
+function parseHHMM(v) {
+  const m = String(v || "").trim().replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace(/[.\s]/g, ":").match(/^(\d{1,2}):?(\d{2})$/);
+  if (!m) return null; const h = +m[1], mi = +m[2];
+  return h < 24 && mi < 60 ? h * 60 + mi : null;
+}
 function timeInput(e) {
-  const i = document.createElement("input"); i.type = "time"; i.style.width = "110px";
+  const i = document.createElement("input"); i.type = "text"; i.className = "ev-time";
+  i.inputMode = "numeric"; i.dir = "ltr"; i.maxLength = 5; i.placeholder = "07:30"; i.autocomplete = "off";
+  i.setAttribute("aria-label", "وقت الحدث بنظام 24 ساعة");
   i.value = String(Math.floor(e.startMinuteOfDay / 60)).padStart(2, "0") + ":" + String(e.startMinuteOfDay % 60).padStart(2, "0");
-  i.onchange = () => { const [h, m] = i.value.split(":").map(Number); e.startMinuteOfDay = h * 60 + m; renderEvents(); };
+  i.onchange = () => {
+    const v = parseHHMM(i.value);
+    if (v == null) { i.setAttribute("aria-invalid", "true"); i.style.borderColor = "var(--red)"; show("msg", "اكتب الوقت بصيغة 24 ساعة مثل 07:30 أو 13:05.", true); return; }
+    i.removeAttribute("aria-invalid"); i.style.borderColor = ""; e.startMinuteOfDay = v; renderEvents();
+  };
   return i;
 }
+function timeErrors() {
+  const bad = document.querySelector('#eventsTable input[aria-invalid="true"]');
+  return bad ? "صحّح الوقت المظلل بالأحمر (صيغة 24 ساعة مثل 07:30) ثم احفظ." : "";
+}
 function daysBoxes(e) {
-  const wrap = document.createElement("span"); wrap.className = "days";
+  const wrap = document.createElement("div"); wrap.className = "chips"; wrap.setAttribute("role", "group"); wrap.setAttribute("aria-label", "أيام الحدث");
   DAY_ORDER.forEach(bit => {
-    const label = document.createElement("label");
-    const cb = document.createElement("input"); cb.type = "checkbox";
-    cb.checked = !!(e.daysOfWeek & (1 << bit));
-    cb.onchange = () => e.daysOfWeek = cb.checked ? (e.daysOfWeek | (1 << bit)) : (e.daysOfWeek & ~(1 << bit));
-    label.append(cb, DAY_NAMES[bit]);
-    wrap.appendChild(label);
+    const b = document.createElement("button"); b.type = "button"; b.className = "chip-day";
+    const on = () => !!(e.daysOfWeek & (1 << bit));
+    b.textContent = DAY_NAMES[bit]; b.setAttribute("aria-pressed", String(on()));
+    b.onclick = () => { e.daysOfWeek = on() ? (e.daysOfWeek & ~(1 << bit)) : (e.daysOfWeek | (1 << bit)); b.setAttribute("aria-pressed", String(on())); };
+    wrap.appendChild(b);
   });
   return wrap;
 }
+function tdl(label, child, cls) { const c = document.createElement("td"); if (label) c.setAttribute("data-label", label); if (cls) c.className = cls; c.appendChild(child); return c; }
 function soundSelect(e) {
   const s = document.createElement("select");
   const defName = soundName(sec()?.defaultSoundKey);
@@ -908,8 +993,9 @@ function soundSelect(e) {
 function deviceActionsBtn(e) {
   const b = document.createElement("button"); b.className = "ghost";
   const n = (e.deviceActions || []).length;
-  b.textContent = "⚡" + (n ? " " + n : "");
+  b.innerHTML = MQ.icon("zap") + (n ? " " + n : " لا شيء");
   b.title = "إجراءات الأجهزة الذكية عند هذا الحدث";
+  b.setAttribute("aria-label", "إجراءات الأجهزة الذكية عند «" + (e.name || "") + "»: " + n);
   b.onclick = () => editDeviceActions(e);
   return b;
 }
@@ -970,8 +1056,8 @@ function checkbox(label, checked, onChange) {
   return wrap;
 }
 function field(label, input) { const w = document.createElement("label"); w.append(label + ": ", input); return w; }
-function delBtn(onClick) { const b = document.createElement("button"); b.className = "ghost danger"; b.textContent = "✕"; b.onclick = onClick; return b; }
-function fmt(ts) { return ts ? new Date(ts).toLocaleString("ar-SA", { dateStyle: "short", timeStyle: "short" }) : "—"; }
+function delBtn(onClick) { const b = document.createElement("button"); b.className = "ghost danger"; b.innerHTML = MQ.icon("trash"); b.setAttribute("aria-label", "حذف"); b.onclick = onClick; return b; }
+function fmt(ts) { return MQ.dt(ts); }
 function esc(s) { return String(s ?? "").replace(/[&<>"'`]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "`": "&#96;" }[c])); }
 
 init();
@@ -1034,7 +1120,14 @@ const _H = {
   h53(event) { deleteSound(this.dataset.h53a0,this.dataset.h53a1) },
   h54(event) { showTab('students') },
   h55(event) { showTab('pickup') },
-  h56(event) { showTab('notices') }
+  h56(event) { showTab('notices') },
+  c1(event) { showTab('calendar') },
+  c2(event) { addCalendarEntry() },
+  c3(event) { removeCalendarEntry(this.dataset.c3a0) },
+  c4(event) { preset(this.dataset.c4a0) },
+  c5(event) { templateRamadan() },
+  c6(event) { templateExams() },
+  c7(event) { syncCalType() }
 };
 ["click", "change", "input"].forEach(type => document.addEventListener(type, ev => {
   for (let el = ev.target; el && el !== document; el = el.parentElement) {
@@ -1044,3 +1137,117 @@ const _H = {
     if (ev.cancelBubble) break;
   }
 }));
+
+
+// ─── Cloud calendar (MQ-UX-03) ────────────────────────────────────────────────
+// Holidays and special days live in payload.calendar and are compiled into dated
+// schedules on publish (common.js MQ.compileCalendar) — every tablet honours them.
+function allScheduleNames() {
+  const set = new Set();
+  config.sections.forEach(sc => sc.schedules.forEach(s => set.add(s.name)));
+  return [...set];
+}
+function nextDate(mmdd) {
+  const d = new Date(); const y = d.getFullYear();
+  const iso = `${y}-${mmdd}`; return iso >= MQ.todayIso() ? iso : `${y + 1}-${mmdd}`;
+}
+function renderCalendar() {
+  config.calendar = config.calendar || [];
+  const names = allScheduleNames();
+  document.getElementById("calForm").innerHTML = canWrite() ? `<div class="cal-form" data-write>
+      <label>النوع<select id="calType" data-onchange="c7"><option value="holiday">إجازة — بلا أجراس</option><option value="special">يوم خاص — جدول بديل</option></select></label>
+      <label>الاسم<input id="calName" placeholder="مثال: إجازة منتصف الفصل" maxlength="60"></label>
+      <label>من<input id="calFrom" type="date" dir="ltr"></label>
+      <label>إلى<input id="calTo" type="date" dir="ltr"></label>
+      <label id="calSchedWrap" hidden>الجدول البديل<select id="calSched">${names.map(n => `<option>${esc(n)}</option>`).join("")}</select></label>
+      <button class="primary" data-onclick="c2"><i data-ic=plus></i> أضف إلى التقويم</button>
+    </div>
+    <div class="row" style="margin:-4px 0 12px" data-write><span class="muted">إضافة سريعة:</span>
+      <button class="ghost sm" data-onclick="c4" data-c4a0="national">اليوم الوطني</button>
+      <button class="ghost sm" data-onclick="c4" data-c4a0="founding">يوم التأسيس</button>
+    </div>` : "";
+  const cal = [...config.calendar].sort((a, b) => (a.from || "").localeCompare(b.from || ""));
+  const today = MQ.todayIso();
+  document.getElementById("calList").innerHTML = cal.length ? cal.map(c => {
+    const past = c.to < today, now = c.from <= today && today <= c.to;
+    const days = Math.round((new Date(c.to) - new Date(c.from)) / 86400000) + 1;
+    const missing = c.type === "special" && !allScheduleNames().includes(c.scheduleName);
+    return `<div class="cal-item" style="${past ? "opacity:.55" : ""}">
+      <span class="k ${c.type === "holiday" ? "" : "sp"}">${c.type === "holiday" ? "إجازة" : "يوم خاص"}</span>
+      <b>${esc(c.name)}</b>${now ? ' <span class="sync-chip ok">جارية اليوم</span>' : ""}
+      <span class="mono" dir="ltr">${MQ.isoToSlash(c.from)}${c.to !== c.from ? " → " + MQ.isoToSlash(c.to) : ""}</span>
+      <span class="hj">${MQ.hijri(c.from)}${c.to !== c.from ? " → " + MQ.hijri(c.to) : ""} · ${days} ${days === 1 ? "يوم" : "أيام"}</span>
+      ${c.type === "special" ? `<span class="muted">يرنّ: «${esc(c.scheduleName || "")}»${missing ? ' <b style="color:var(--red)">— الجدول غير موجود</b>' : ""}</span>` : ""}
+      <span style="flex:1"></span>
+      <button class="ghost danger sm" data-write data-onclick="c3" data-c3a0="${esc(c.id)}" aria-label="حذف ${esc(c.name)}"><i data-ic=trash></i></button>
+    </div>`; }).join("") : '<p class="muted">لا توجد إجازات أو أيام خاصة بعد. أضف أول إجازة من النموذج أعلاه.</p>';
+  // dated schedule periods across sections
+  const rows = [];
+  config.sections.forEach(sc => sc.schedules.forEach(s => { if (s.activeFrom && s.activeTo) rows.push({ sec: sc.name, s }); }));
+  document.getElementById("calPeriods").innerHTML = rows.length ? rows.map(r =>
+    `<div class="cal-item"><span class="k sp">فترة جدول</span><b>${esc(r.s.name)}</b><span class="muted">${esc(r.sec)}</span>
+      <span class="mono" dir="ltr">${MQ.isoToSlash(r.s.activeFrom)} → ${MQ.isoToSlash(r.s.activeTo)}</span>
+      <span class="hj">${MQ.hijri(r.s.activeFrom)} → ${MQ.hijri(r.s.activeTo)}</span></div>`).join("")
+    : '<p class="muted">لا توجد جداول بفترة تفعيل بعد.</p>';
+}
+function syncCalType() { const sp = document.getElementById("calType").value === "special"; document.getElementById("calSchedWrap").hidden = !sp; }
+function addCalendarEntry() {
+  const type = document.getElementById("calType").value;
+  const name = document.getElementById("calName").value.trim();
+  const from = document.getElementById("calFrom").value, to = document.getElementById("calTo").value || from;
+  if (!name) return show("msg", "اكتب اسماً للإجازة أو اليوم الخاص.", true);
+  if (!from) return show("msg", "اختر تاريخ البداية.", true);
+  if (to < from) return show("msg", "تاريخ النهاية قبل تاريخ البداية.", true);
+  const entry = { id: "cal-" + Date.now().toString(36), type, name, from, to };
+  if (type === "special") { entry.scheduleName = document.getElementById("calSched").value; if (!entry.scheduleName) return show("msg", "أنشئ الجدول البديل أولاً من تبويب «الجداول».", true); }
+  config.calendar.push(entry);
+  renderCalendar();
+  show("msg", "أُضيف «" + name + "» — اضغط «حفظ ونشر للتابلت» ليصل للأجهزة.");
+}
+function removeCalendarEntry(id) {
+  const c = config.calendar.find(x => x.id === id); if (!c) return;
+  if (!confirm("حذف «" + c.name + "» من التقويم؟")) return;
+  config.calendar = config.calendar.filter(x => x.id !== id); renderCalendar();
+  show("msg", "حُذف — اضغط «حفظ ونشر للتابلت» لتطبيق الحذف على الأجهزة.");
+}
+function preset(kind) {
+  const p = kind === "national" ? { name: "اليوم الوطني", mmdd: "09-23" } : { name: "يوم التأسيس", mmdd: "02-22" };
+  const d = nextDate(p.mmdd);
+  document.getElementById("calType").value = "holiday"; syncCalType();
+  document.getElementById("calName").value = p.name;
+  document.getElementById("calFrom").value = d; document.getElementById("calTo").value = d;
+  show("msg", "عبّأنا «" + p.name + "» (" + MQ.isoToSlash(d) + ") — عدّل الأيام إن أعلنت الجهة إجازة أطول ثم اضغط «أضف».");
+}
+function periodEditor(s) {
+  const w = document.createElement("div"); w.className = "period";
+  const lab = document.createElement("span"); lab.className = "muted"; lab.textContent = "فترة التفعيل (اختياري):";
+  const mk = (val, aria, set) => { const i = document.createElement("input"); i.type = "date"; i.dir = "ltr"; i.value = val || ""; i.setAttribute("aria-label", aria); i.onchange = () => { set(i.value || null); renderSchedules(); }; return i; };
+  const f = mk(s.activeFrom, "بداية فترة الجدول", v => { s.activeFrom = v; if (v && (!s.activeTo || s.activeTo < v)) s.activeTo = v; });
+  const t = mk(s.activeTo, "نهاية فترة الجدول", v => { s.activeTo = v; });
+  const hint = document.createElement("span"); hint.className = "hj";
+  hint.textContent = s.activeFrom && s.activeTo ? `${MQ.hijri(s.activeFrom)} → ${MQ.hijri(s.activeTo)} — يحلّ محل الجدول النشط خلال الفترة فقط` : "مثل رمضان أو أسبوع الاختبارات";
+  const clr = document.createElement("button"); clr.type = "button"; clr.className = "ghost sm"; clr.textContent = "بلا فترة";
+  clr.onclick = () => { s.activeFrom = null; s.activeTo = null; renderSchedules(); };
+  w.append(lab, f, document.createTextNode("→"), t, hint);
+  if (s.activeFrom || s.activeTo) w.append(clr);
+  return w;
+}
+function templateRamadan() {
+  const base = secScheds().find(x => x.isActive) || secScheds()[0];
+  if (!base) return;
+  const from = prompt("بداية رمضان (YYYY-MM-DD):", ""); if (!from) return;
+  const to = prompt("نهاية الدوام الرمضاني (YYYY-MM-DD):", from); if (!to) return;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || to < from) return show("msg", "اكتب التاريخين بصيغة 2027-02-08 والنهاية بعد البداية.", true);
+  const evs = (base.events || []).map(e => ({ ...e, startMinuteOfDay: Math.min(1439, e.startMinuteOfDay + 120), durationMin: e.durationMin && e.durationMin > 35 ? 35 : e.durationMin }));
+  secScheds().push({ name: "رمضان", isActive: false, activeFrom: from, activeTo: to, events: evs });
+  curSched = secScheds().length - 1; showTab("schedules"); renderSchedules();
+  show("msg", "أنشأنا «رمضان» من الجدول الحالي متأخراً ساعتين والحصة 35 د — راجع الأوقات ثم «حفظ ونشر».");
+}
+function templateExams() {
+  const ev = (name, h, m, dur) => ({ name, startMinuteOfDay: h * 60 + m, durationMin: dur, daysOfWeek: 0b1001111, volume: 1, enabled: true, sortOrder: 0, soundKey: "" });
+  secScheds().push({ name: "أيام الاختبارات", isActive: false, events: [
+    ev("دخول القاعات", 7, 15, 15), ev("بداية الاختبار الأول", 7, 30, 120), ev("نهاية الاختبار الأول", 9, 30, 5),
+    ev("بداية الاختبار الثاني", 10, 0, 90), ev("نهاية الاختبار الثاني", 11, 30, 5), ev("الانصراف", 11, 45, 5) ] });
+  curSched = secScheds().length - 1; showTab("schedules"); renderSchedules();
+  show("msg", "أُضيف قالب «أيام الاختبارات» — عدّل الأوقات، ثم حدّد فترته أو أضف «يوم خاص» في التقويم، ثم «حفظ ونشر».");
+}

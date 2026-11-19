@@ -42,6 +42,7 @@
   button:hover { background:var(--green-d); } button:disabled { opacity:.6; cursor:default; }
   .msg { margin-top:14px; padding:12px 16px; border-radius:12px; font-size:14px; display:none; }
   .msg.err { background:#FDECEA; color:var(--red); display:block; }
+  .msg.ok { background:var(--green-c); color:var(--green-d); display:block; }
   .feat { display:flex; gap:10px; align-items:flex-start; margin:9px 0; color:var(--muted); font-size:14px; }
   .feat b { color:var(--text); font-weight:600; }
   .check { color:var(--green); font-weight:700; }
@@ -52,6 +53,7 @@
   .muted { color:var(--muted); font-size:13px; }
 </style>
 <script src="wan-track.js?v=3" data-wan-product="meeqat" defer></script>
+<link rel="stylesheet" href="common.css?v=18">
 </head>
 <body>
 <div class="wrap">
@@ -71,8 +73,9 @@
     <input id="email" type="email" dir="ltr" placeholder="school@example.com" autocomplete="email">
     <label for="phone">رقم الجوال <span class="opt">(اختياري)</span></label>
     <input id="phone" type="tel" dir="ltr" placeholder="05xxxxxxxx" autocomplete="tel">
-    <label for="password">كلمة مرور لوحة المدرسة <span class="opt">(اختياري — لإنشاء حساب دخول فورًا)</span></label>
-    <input id="password" type="password" dir="ltr" placeholder="8 أحرف على الأقل" autocomplete="new-password">
+    <label for="password">كلمة مرور لوحة المدرسة</label>
+    <input id="password" type="password" dir="ltr" placeholder="8 أحرف على الأقل" autocomplete="new-password" required minlength="8" aria-describedby="pwHint">
+    <p class="muted" id="pwHint" style="margin:-6px 0 10px;font-size:13px">ستدخل بها لوحة المدرسة بعد تأكيد بريدك.</p>
     <input class="hp" id="website" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
     <label class="consent" for="terms"><input type="checkbox" id="terms"><span>أوافق على <a class="link" href="/terms.html" target="_blank" rel="noopener">شروط الاستخدام</a> و<a class="link" href="/privacy.html" target="_blank" rel="noopener">سياسة الخصوصية</a>، ومنها معالجة بيانات المدرسة وطلابها نيابةً عنها.</span></label>
     <div id="captcha" style="margin:10px 0"></div>
@@ -83,8 +86,8 @@
   </div>
 
   <div class="card done" id="doneCard" style="display:none">
-    <div class="logo" style="margin-bottom:8px">✓</div>
-    <h1 style="font-size:22px">تم إنشاء حسابك التجريبي 🎉</h1>
+    <div class="logo" style="margin-bottom:8px"><i data-ic=check></i></div>
+    <h1 style="font-size:22px">تم إنشاء حسابك التجريبي <i data-ic=sparkles></i></h1>
     <p class="sub" style="margin-bottom:0">رمز التفعيل الخاص بمدرستك:</p>
     <div class="code mono" id="doneCode">—</div>
     <div class="steps">
@@ -95,7 +98,7 @@
       <span id="acctLine"></span>
     </div>
     <p class="muted" id="trialLine" style="margin-top:16px"></p>
-    <p class="muted">احتفظ برمز التفعيل. للمساعدة تواصل مع مزوّد الخدمة.</p>
+    <p class="muted">احتفظ برمز التفعيل. للمساعدة: <a class="link" href="https://wa.me/966535313495" rel="noopener">واتساب الدعم</a>.</p>
   </div>
 </div>
 <footer class="legal-foot">
@@ -104,6 +107,7 @@
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js" integrity="sha384-2zrRDgDHSYB/GN3nFW3fsZXoxEhKIr3N2h63Tc6DEOB9JJdFIu8xMJT2Cph/gBil" crossorigin="anonymous"></script>
-<script src="signup.js"></script>
+<script src="common.js?v=18"></script>
+<script src="signup.js?v=18"></script>
 </body>
 </html>

@@ -28,7 +28,7 @@ async function loadStudents() {
   const { data, error } = await db.from("students")
     .select("id, full_name, speak_name, grade, class_name, section_id, external_id, active, student_guardians(relation, valid_until, guardian_id, guardians(id, name, phone))")
     .eq("school_id", schoolId).order("grade").order("class_name").order("full_name").limit(5000);
-  if (error) return show("msg", "تعذّر تحميل الطلاب: " + error.message, true);
+  if (error) return show("msg", "تعذّر تحميل الطلاب: " + MQ.err(error), true);
   students = data || [];
   renderStudents();
 }
@@ -65,7 +65,7 @@ function renderStudents() {
 
 async function updateStudent(id, patch) {
   const { error } = await db.from("students").update(patch).eq("id", id);
-  if (error) return show("msg", "فشل الحفظ: " + error.message, true);
+  if (error) return show("msg", "فشل الحفظ: " + MQ.err(error), true);
   Object.assign(students.find(s => s.id === id) || {}, patch);
   show("msg", "✓ حُفظ");
   if ("active" in patch) renderStudents();
@@ -90,7 +90,7 @@ async function saveGuardian(studentId) {
     p_student: studentId, p_phone: phone, p_name: v("gName") || null, p_relation: v("gRel"),
     p_valid_until: until ? new Date(until + "T23:59:59+03:00").toISOString() : null,
   });
-  if (error) return show("msg", "فشل: " + error.message, true);
+  if (error) return show("msg", "فشل: " + MQ.err(error), true);
   show("msg", "✓ أُضيف وليّ الأمر");
   loadStudents();
 }
@@ -98,7 +98,7 @@ async function saveGuardian(studentId) {
 async function removeLink(studentId, guardianId) {
   if (!confirm("إزالة وليّ الأمر من هذا الطالب؟")) return;
   const { error } = await db.from("student_guardians").delete().eq("student_id", studentId).eq("guardian_id", guardianId);
-  if (error) return show("msg", "فشل: " + error.message, true);
+  if (error) return show("msg", "فشل: " + MQ.err(error), true);
   loadStudents();
 }
 
@@ -118,7 +118,7 @@ async function addStudent() {
   if (v("nsPhone") && !normPhone(v("nsPhone"))) return show("msg", "رقم الجوال غير صالح.", true);
   const { data, error } = await db.rpc("import_students", { p_school: schoolId, p_rows: [{
     full_name: v("nsName"), grade: v("nsGrade"), class_name: v("nsClass"), phone: v("nsPhone") }] });
-  if (error) return show("msg", "فشل: " + error.message, true);
+  if (error) return show("msg", "فشل: " + MQ.err(error), true);
   show("msg", data.inserted ? "✓ أُضيف الطالب" : "✓ الطالب موجود — حُدِّثت بياناته");
   document.getElementById("stuForm").style.display = "none";
   loadStudents();
@@ -194,7 +194,7 @@ async function importFile(file) {
   if (!file) return;
   if (file.size > 10 * 1024 * 1024) return show("msg", "الملف أكبر من 10MB.", true);
   let rows;
-  try { rows = await readSheet(file); } catch (e) { return show("msg", e.message || String(e), true); }
+  try { rows = await readSheet(file); } catch (e) { return show("msg", MQ.err(e) || String(e), true); }
   const hIdx = rows.slice(0, 15).findIndex(r => { const m = mapHeader(r); return m.full_name !== undefined; });
   if (hIdx < 0) return show("msg", "لم نجد عمود «اسم الطالب» في أول 15 صفًا من الملف.", true);
   const map = mapHeader(rows[hIdx]);
@@ -232,7 +232,7 @@ function renderImportPreview(map) {
     <table><thead><tr><th>#</th><th>الطالب</th><th>الصف</th><th>الفصل</th><th>الجوال</th><th>ملاحظات</th></tr></thead><tbody>
     ${importRows.slice(0, 50).map(x => `<tr class="${x.fatal ? "bad" : x.issues.length ? "warn" : ""}"><td class="mono">${x.n}</td>
       <td>${esc(x.row.full_name)}</td><td>${esc(x.row.grade)}</td><td>${esc(x.row.class_name)}</td>
-      <td dir="ltr" class="mono">${esc(localPhone(x.row.phone))}</td><td>${x.fatal ? "✕ " : x.issues.length ? "⚠ " : "✓"}${esc(x.issues.join("، "))}</td></tr>`).join("")}
+      <td dir="ltr" class="mono">${esc(localPhone(x.row.phone))}</td><td>${x.fatal ? "✕ " : x.issues.length ? "<i data-ic=alert></i> " : "✓"}${esc(x.issues.join("، "))}</td></tr>`).join("")}
     </tbody></table>${importRows.length > 50 ? `<p class="muted">يُعرض أول 50 صفًا فقط.</p>` : ""}</div>`;
 }
 
@@ -243,7 +243,7 @@ async function runImport() {
   for (let i = 0; i < rows.length; i += 1000) {
     show("msg", `… جارٍ الاستيراد ${Math.min(i + 1000, rows.length)} / ${rows.length}`);
     const { data, error } = await db.rpc("import_students", { p_school: schoolId, p_rows: rows.slice(i, i + 1000), p_default_section: section });
-    if (error) return show("msg", "فشل الاستيراد: " + error.message, true);
+    if (error) return show("msg", "فشل الاستيراد: " + MQ.err(error), true);
     total.inserted += data.inserted; total.updated += data.updated; total.links += data.links;
     total.errors.push(...(data.errors || []));
   }
@@ -257,7 +257,7 @@ async function runImport() {
 // ─── Pickup settings ──────────────────────────────────────────────────────────
 async function loadPickupSettings() {
   const { data, error } = await db.from("pickup_settings").select("*").eq("school_id", schoolId).maybeSingle();
-  if (error) return show("msg", "تعذّر تحميل الإعدادات: " + error.message, true);
+  if (error) return show("msg", "تعذّر تحميل الإعدادات: " + MQ.err(error), true);
   pickupSettings = data || { school_id: schoolId, lat: null, lng: null, radius_m: 300, gates: ["1"], windows: [],
     repeat_after_s: 60, max_repeats: 1, speak_times: 2, student_title: "الطالب", enabled: false };
   renderPickupSettings();
@@ -275,7 +275,7 @@ function renderPickupSettings() {
     <h3>موقع المدرسة</h3>
     <div class="row"><label class="muted">خط العرض</label><input id="psLat" dir="ltr" style="width:130px" value="${esc(s.lat ?? "")}">
       <label class="muted">خط الطول</label><input id="psLng" dir="ltr" style="width:130px" value="${esc(s.lng ?? "")}">
-      <button class="ghost" data-onclick="p12">📍 موقعي الحالي</button> ${map}</div>
+      <button class="ghost" data-onclick="p12"><i data-ic=pin></i> موقعي الحالي</button> ${map}</div>
     <div class="row" style="margin-top:10px"><label class="muted">نصف القطر المسموح (متر)</label>
       <input id="psRadius" type="number" min="50" max="5000" style="width:110px" value="${esc(s.radius_m)}">
       <span class="muted">يُقبل «وصلت» فقط إذا كان وليّ الأمر داخل هذا النطاق لحظة الضغط (لا نخزّن موقعه).</span></div>
@@ -299,7 +299,7 @@ function renderPickupSettings() {
       `<tr><td colspan="5" class="muted">لا توجد أوقات — لن يُقبل أي نداء حتى تضيف وقتًا.</td></tr>`}
     </tbody></table>
     <div class="row" style="margin-top:10px"><button class="ghost" data-onclick="p17">+ وقت انصراف</button><span style="flex:1"></span>
-      <button class="primary" data-onclick="p18" ${canWrite() ? "" : "disabled"}>💾 حفظ إعدادات الاستلام</button></div>`;
+      <button class="primary" data-onclick="p18" ${canWrite() ? "" : "disabled"}><i data-ic=save></i> حفظ إعدادات الاستلام</button></div>`;
 }
 
 function collectPickupForm() {
@@ -327,7 +327,7 @@ async function savePickupSettings() {
     repeat_after_s: s.repeat_after_s, max_repeats: s.max_repeats, speak_times: s.speak_times,
     student_title: s.student_title, enabled: s.enabled, updated_at: new Date().toISOString() };
   const { error } = await db.from("pickup_settings").upsert(row, { onConflict: "school_id" });
-  if (error) return show("msg", "فشل الحفظ: " + error.message, true);
+  if (error) return show("msg", "فشل الحفظ: " + MQ.err(error), true);
   show("msg", "✓ حُفظت إعدادات الاستلام");
   renderPickupSettings();
 }
@@ -339,7 +339,7 @@ function useMyLocation() {
     pickupSettings.lat = +p.coords.latitude.toFixed(6); pickupSettings.lng = +p.coords.longitude.toFixed(6);
     renderPickupSettings();
     show("msg", `✓ التُقط الموقع (دقة ±${Math.round(p.coords.accuracy)} م) — اضغط حفظ.`);
-  }, e => show("msg", "تعذّر تحديد الموقع: " + e.message, true), { enableHighAccuracy: true, timeout: 15000 });
+  }, e => show("msg", "تعذّر تحديد الموقع: " + MQ.err(e), true), { enableHighAccuracy: true, timeout: 15000 });
 }
 function windowEdit(fn) { collectPickupForm(); fn(pickupSettings.windows); renderPickupSettings(); }
 
@@ -357,7 +357,7 @@ async function loadNotices() {
   noticeTargetChanged();
   const { data, error } = await db.from("school_notices").select("id, title, body, target, created_at")
     .eq("school_id", schoolId).order("created_at", { ascending: false }).limit(30);
-  if (error) return show("msg", "تعذّر تحميل التعاميم: " + error.message, true);
+  if (error) return show("msg", "تعذّر تحميل التعاميم: " + MQ.err(error), true);
   document.getElementById("ntList").innerHTML = (data || []).map(n => `<div class="notice">
     <div class="row"><b style="flex:1">${esc(n.title)}</b><span class="muted">${esc(targetText(n.target))} · ${fmt(n.created_at)}</span>
       ${canWrite() ? `<button class="ghost danger sm" data-onclick="p20" data-p20a0="${esc(n.id)}">✕</button>` : ""}</div>
@@ -384,7 +384,7 @@ async function sendNotice() {
   if (kind === "sections") { const ids = picked("ntSec"); if (!ids.length) return show("msg", "اختر قسمًا.", true); target = { section_ids: ids }; }
   if (kind === "grades") { const g = picked("ntGrade"); if (!g.length) return show("msg", "اختر صفًا.", true); target = { grades: g }; }
   const { error } = await db.from("school_notices").insert({ school_id: schoolId, title, body, target, created_by: me.id });
-  if (error) return show("msg", "فشل الإرسال: " + error.message, true);
+  if (error) return show("msg", "فشل الإرسال: " + MQ.err(error), true);
   document.getElementById("ntTitle").value = ""; document.getElementById("ntBody").value = "";
   show("msg", "✓ أُرسل التعميم — يظهر في تطبيق وليّ الأمر.");
   loadNotices();
@@ -392,7 +392,7 @@ async function sendNotice() {
 async function deleteNotice(id) {
   if (!confirm("حذف هذا التعميم؟")) return;
   const { error } = await db.from("school_notices").delete().eq("id", id);
-  if (error) return show("msg", "فشل: " + error.message, true);
+  if (error) return show("msg", "فشل: " + MQ.err(error), true);
   loadNotices();
 }
 

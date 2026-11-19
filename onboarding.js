@@ -10,7 +10,7 @@ const obHiddenKey = () => "mq_starthere_hidden_" + schoolId;
 const MQ_WA = "966535313495";   // company WhatsApp (sales + support)
 const MQ_QUOTE_TXT = "السعر حسب عرض السعر المخصص — تواصل معنا";
 const waLink = txt => `https://wa.me/${MQ_WA}?text=${encodeURIComponent(txt)}`;
-const fmtSAR = n => Number(n || 0).toLocaleString("ar-SA", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + " ر.س";
+const fmtSAR = n => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + " ر.س";
 const daysLeft = d => d ? Math.floor((Date.parse(d + "T23:59:59+03:00") - Date.now()) / 86400000) : null;
 
 async function obCall(body) {
@@ -25,7 +25,7 @@ async function obCall(body) {
 
 async function onboardingRefresh() {
   try { BILL = await obCall({ action: "state" }); }
-  catch (e) { console.warn("billing state", e.message); return; }
+  catch (e) { console.warn("billing state", MQ.err(e)); return; }
   renderTrialBanner(); renderStartHere();
   if (document.getElementById("tab-billing").style.display === "block") renderBilling();
 }
@@ -45,7 +45,7 @@ function renderTrialBanner() {
   } else { el.style.display = "none"; return; }
   if (pending) txt += pending.receipt_at ? " · إيصال التحويل قيد المراجعة." : ` · لديك فاتورة ${esc(pending.number || "")} بانتظار التحويل.`;
   el.className = "trial-banner " + cls;
-  el.innerHTML = `<span style="flex:1">${txt}</span><button class="primary sm" data-onclick="o1">💳 الاشتراك والدفع</button>`;
+  el.innerHTML = `<span style="flex:1">${txt}</span><button class="primary sm" data-onclick="o1"><i data-ic=card></i> الاشتراك والدفع</button>`;
   el.style.display = "flex";
 }
 
@@ -55,23 +55,23 @@ function renderStartHere() {
   if (!p) { el.style.display = "none"; return; }
   const steps = [
     { k: "profile", t: "أكمل بياناتك", d: "اسمك ورقم جوالك — لنتواصل معك عند أي تنبيه من الأجهزة.",
-      a: `<button class="ghost sm" data-onclick="h9">👤 فتح «حسابي»</button>` },
+      a: `<button class="ghost sm" data-onclick="h9"><i data-ic=user></i> فتح «حسابي»</button>` },
     { k: "schedule", t: "أنشئ جدول الجرس", d: "أضف الحصص والفسح، أو ابدأ بجدول نموذجي لمدرسة سعودية ثم عدّله.",
-      a: (obCanWrite() ? `<button class="primary sm" data-onclick="o2">✨ تعبئة جدول نموذجي</button> ` : "") + `<button class="ghost sm" data-onclick="h2">📅 فتح الجداول</button>` },
+      a: (obCanWrite() ? `<button class="primary sm" data-onclick="o2"><i data-ic=sparkles></i> تعبئة جدول نموذجي</button> ` : "") + `<button class="ghost sm" data-onclick="h2"><i data-ic=calendar></i> فتح الجداول</button>` },
     { k: "device", t: "اربط التابلت", d: BILL.activationCode
         ? `ثبّت تطبيق ميقات على تابلت أندرويد، ثم من «الإعدادات ← الربط السحابي» أدخل الرمز: <b class="mono code-chip" dir="ltr">${esc(BILL.activationCode)}</b>`
         : "ثبّت تطبيق ميقات على تابلت أندرويد وأدخل رمز التفعيل من «الإعدادات ← الربط السحابي».",
-      a: `<a class="ghost sm btnlink" target="_blank" rel="noopener" href="/download.html">📲 تنزيل تطبيق التابلت</a> <button class="ghost sm" data-onclick="h6">📱 الأجهزة</button>` },
+      a: `<a class="ghost sm btnlink" target="_blank" rel="noopener" href="/download.html"><i data-ic=smartphone></i> تنزيل تطبيق التابلت</a> <button class="ghost sm" data-onclick="h6"><i data-ic=tablet></i> الأجهزة</button>` },
     { k: "bell", t: "جرّب الجرس الآن", d: p.device ? "أرسل جرسًا فوريًا وتأكد أن الصوت خرج من السماعة." : "بعد ربط التابلت أرسل جرسًا تجريبيًا من هنا.",
-      a: obCanWrite() ? `<button class="primary sm" data-onclick="o3" ${p.device ? "" : "disabled"}>🔔 جرّب الجرس الآن</button>` : "" },
-    { k: "plan", t: "اطلب عرض سعر لمدرستك", d: "نرسل لك عرض سعر حسب حجم المدرسة وعدد البوابات والأجهزة، ثم فاتورة تدفعها بالتحويل وترفع الإيصال هنا.",
-      a: `<button class="ghost sm" data-onclick="o1">💳 الاشتراك والدفع</button>` },
+      a: obCanWrite() ? `<button class="primary sm" data-onclick="o3" ${p.device ? "" : "disabled"}><i data-ic=bell></i> جرّب الجرس الآن</button>` : "" },
+    { k: "plan", t: "اطلب عرض سعر " + (window.PRO_ON ? "لمنشأتك" : "لمدرستك"), d: "نرسل لك عرض سعر حسب حجم " + (window.PRO_ON ? "المنشأة" : "المدرسة") + " وعدد البوابات والأجهزة، ثم فاتورة تدفعها بالتحويل وترفع الإيصال هنا.",
+      a: `<button class="ghost sm" data-onclick="o1"><i data-ic=card></i> الاشتراك والدفع</button>` },
   ];
   const done = steps.filter(s => p[s.k]).length;
   if (done === steps.length || localStorage.getItem(obHiddenKey()) === "1") { el.style.display = "none"; return; }
   const next = steps.find(s => !p[s.k]);
   el.innerHTML = `
-    <div class="row" style="margin-bottom:6px"><h2 style="flex:1;margin:0">🚀 ابدأ هنا — أول جرس خلال 10 دقائق</h2>
+    <div class="row" style="margin-bottom:6px"><h2 style="flex:1;margin:0"><i data-ic=flag></i> ابدأ هنا — أول جرس خلال 10 دقائق</h2>
       <span class="muted">${done} من ${steps.length}</span><button class="ghost sm" data-onclick="o9" title="إخفاء البطاقة">إخفاء</button></div>
     <div class="bar" style="margin:8px 0 14px"><span style="width:${Math.round(done * 100 / steps.length)}%"></span></div>
     <ol class="ob-steps">${steps.map((s, i) => `
@@ -105,7 +105,7 @@ async function fillDemoSchedule() {
   curSection = secIdx; curSched = Math.max(0, s.schedules.findIndex(x => x.events === events));
   await saveConfig(true);
   renderSectionBar(); renderSchedules(); showTab("schedules");
-  show("msg", "✓ أُضيف جدول نموذجي (الأحد–الخميس) ونُشر للتابلت — عدّل الأوقات حسب مدرستك ثم اضغط «حفظ ونشر».");
+  show("msg", "✓ أُضيف جدول نموذجي (الأحد–الخميس) ونُشر للتابلت — عدّل الأوقات حسب دوامكم ثم اضغط «حفظ ونشر».");
   onboardingRefresh();
 }
 async function testBell() {
@@ -135,7 +135,7 @@ function renderBilling() {
       <td><button class="ghost sm" data-onclick="o7" data-o7a0="${esc(b.iban)}">نسخ</button></td></tr>`).join("");
     openCard = `<div class="card ob-open">
       <div class="row"><h2 style="flex:1;margin:0">الفاتورة <span class="mono" dir="ltr">${esc(open.number || "#" + open.id)}</span></h2>
-        <a class="primary sm btnlink" target="_blank" rel="noopener" href="./proforma.html?id=${open.id}">📄 عرض / تحميل PDF</a></div>
+        <a class="primary sm btnlink" target="_blank" rel="noopener" href="./proforma.html?id=${open.id}"><i data-ic=file></i> عرض / تحميل PDF</a></div>
       <p class="muted" style="margin:6px 0 12px">${esc(open.buyer_name || s.name || "")}${open.plan_key ? " — " + esc(planName(open.plan_key)) : ""} لمدة ${periodTxt(open.period_months)}</p>
       <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
         <div class="kpi"><div class="l">المبلغ قبل الضريبة</div><div class="n" style="font-size:20px">${fmtSAR(open.amount)}</div></div>
@@ -166,13 +166,13 @@ function renderBilling() {
       <div class="ob-plans">${planCards}</div>
       <div class="ob-cta">
         <div style="flex:1"><b>${MQ_QUOTE_TXT}</b><div class="muted">واتساب الشركة: <bdi dir="ltr" class="mono">+966 53 531 3495</bdi></div></div>
-        <a class="primary btnlink" target="_blank" rel="noopener" href="${waLink(quoteMsg(""))}">💬 اطلب عرض سعر عبر واتساب</a>
+        <a class="primary btnlink" target="_blank" rel="noopener" href="${waLink(quoteMsg(""))}"><i data-ic=message></i> اطلب عرض سعر عبر واتساب</a>
       </div></div>`;
 
   const hist = invs.length ? `<div class="card"><h2>سجل الفواتير</h2><table><thead><tr><th>الرقم</th><th>الباقة</th><th>الإجمالي</th><th>الحالة</th><th>التاريخ</th><th></th></tr></thead><tbody>
     ${invs.map(i => `<tr><td class="mono" dir="ltr">${esc(i.number || "#" + i.id)}</td><td>${esc(planName(i.plan_key))}</td>
       <td class="mono">${fmtSAR(invTotal(i))}</td><td>${invStatus(i)}</td><td class="mono" dir="ltr">${fmt(i.created_at)}</td>
-      <td>${i.number ? `<a class="ghost sm btnlink" target="_blank" rel="noopener" href="./proforma.html?id=${i.id}">📄</a>` : ""}</td></tr>`).join("")}
+      <td>${i.number ? `<a class="ghost sm btnlink" target="_blank" rel="noopener" href="./proforma.html?id=${i.id}"><i data-ic=file></i></a>` : ""}</td></tr>`).join("")}
     </tbody></table></div>` : "";
 
   const reshow = localStorage.getItem(obHiddenKey()) === "1" ? `<p><button class="ghost sm" data-onclick="o10">إظهار بطاقة «ابدأ هنا»</button></p>` : "";
@@ -185,10 +185,10 @@ const invVat = i => i.vat != null ? Number(i.vat) : Math.round(Number(i.amount |
 const invTotal = i => i.total != null ? Number(i.total) : Number(i.amount || 0) + invVat(i);
 function receiptForm(inv) {
   return `<div class="row" style="margin-top:6px">
-    <label class="ob-file">📎 <span id="obFileName">اختر ملف الإيصال</span>
+    <label class="ob-file"><i data-ic=paperclip></i> <span id="obFileName">اختر ملف الإيصال</span>
       <input type="file" id="obFile" accept="application/pdf,image/jpeg,image/png,image/webp" data-onchange="o12" aria-label="ملف إيصال التحويل"></label>
     <input id="obNote" style="flex:1;min-width:180px" maxlength="300" placeholder="ملاحظة (اختياري): اسم المحوِّل، البنك…">
-    <button class="primary sm" data-onclick="o11" data-o11a0="${inv.id}">⬆ رفع الإيصال</button></div>
+    <button class="primary sm" data-onclick="o11" data-o11a0="${inv.id}"><i data-ic=upload></i> رفع الإيصال</button></div>
     <p class="muted">PDF أو صورة حتى 5MB.</p><div class="msg" id="obRcptMsg"></div>`;
 }
 function invStatus(i) {
@@ -206,12 +206,12 @@ async function uploadReceipt(id) {
   fd.append("note", document.getElementById("obNote").value || ""); fd.append("file", f);
   show("obRcptMsg", "جارٍ الرفع…");
   try { await obCall(fd); await onboardingRefresh(); renderBilling(); show("msg", "✓ استلمنا إيصال التحويل — سنؤكد ونمدد الاشتراك خلال يوم عمل."); }
-  catch (e) { show("obRcptMsg", e.message, true); }
+  catch (e) { show("obRcptMsg", MQ.err(e), true); }
 }
 async function cancelProforma(id) {
   if (!confirm("إلغاء الفاتورة المبدئية؟")) return;
   try { await obCall({ action: "cancel", invoiceId: id }); await onboardingRefresh(); renderBilling(); }
-  catch (e) { show("msg", e.message, true); }
+  catch (e) { show("msg", MQ.err(e), true); }
 }
 
 Object.assign(_H, {

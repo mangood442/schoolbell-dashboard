@@ -6,7 +6,7 @@ Allow: /privacy.html
 Allow: /terms.html
 Disallow: /index.html
 Disallow: /manager.html
-Disallow: /admin.html
 Disallow: /gate.html
 Disallow: /proforma.html
+Disallow: /reset.html
 Sitemap: https://meeqat.me/sitemap.xml

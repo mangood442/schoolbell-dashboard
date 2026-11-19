@@ -21,7 +21,7 @@ async function submitForm() {
   const name = val("name"), email = val("email"), phone = val("phone"), password = val("password");
   if (name.length < 2) return err("أدخل اسم المدرسة");
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return err("أدخل بريدًا إلكترونيًا صحيحًا");
-  if (password && password.length < 8) return err("كلمة المرور 8 أحرف على الأقل");
+  if (password.length < 8) return err("اختر كلمة مرور من 8 أحرف على الأقل — ستدخل بها لوحة المدرسة.");
   if (!document.getElementById("terms").checked) return err("وافق على شروط الاستخدام وسياسة الخصوصية للمتابعة");
   if (TURNSTILE_SITE_KEY && !turnstileToken) return err("أكمل التحقق أولًا");
   const btn = document.getElementById("submit");
@@ -31,7 +31,7 @@ async function submitForm() {
   });
   const e = error || data?.error;
   if (e && TURNSTILE_SITE_KEY && window.turnstile) { window.turnstile.reset("#captcha"); turnstileToken = ""; }
-  if (e) { btn.disabled = false; btn.textContent = "ابدأ التجربة المجانية"; return err(typeof e === "string" ? e : (data?.error || e.message || "تعذّر الإنشاء")); }
+  if (e) { btn.disabled = false; btn.textContent = "ابدأ التجربة المجانية"; return err(typeof e === "string" ? MQ.err(e) : (data?.error || await fnError(e) || MQ.err(e))); }
   document.getElementById("formCard").style.display = "none";
   // Google Ads: sign-up confirmed by the server (school created, pending e-mail) -> conversion
   try { if (window.wanTrack) window.wanTrack.signup({ method: "trial" }); } catch (_) {}
@@ -45,10 +45,19 @@ async function submitForm() {
 function showCheckMail(email) {
   const c = document.getElementById("doneCard");
   c.style.display = "block";
-  c.innerHTML = `<div class="logo" style="margin-bottom:8px">✉️</div>
+  c.innerHTML = `<div class="logo" style="margin-bottom:8px"><i data-ic=mail></i></div>
     <h1 style="font-size:22px">بقيت خطوة واحدة</h1>
     <p class="sub">أرسلنا رابط التأكيد إلى <b dir="ltr">${esc(email)}</b>.<br>افتح الرابط خلال 48 ساعة لتفعيل التجربة المجانية وعرض رمز التفعيل.</p>
-    <p class="muted">لم تصلك الرسالة؟ تأكد من مجلد الرسائل غير المرغوبة (Spam).</p>`;
+    <p class="muted">لم تصلك الرسالة خلال دقيقتين؟ تحقّق من الرسائل غير المرغوبة، ثم:</p>
+    <p><button class="linkbtn" id="resendBtn" type="button">أعد إرسال رابط التأكيد</button></p>
+    <div class="msg" id="resendMsg" role="status"></div>`;
+  document.getElementById("resendBtn").onclick = async (ev) => {
+    const b = ev.currentTarget; b.disabled = true;
+    const m = document.getElementById("resendMsg");
+    try { await MQ.resendConfirm(email); m.textContent = "أُعيد الإرسال. الرابط صالح 48 ساعة."; m.className = "msg ok"; }
+    catch (x) { m.textContent = MQ.err(x); m.className = "msg err"; }
+    setTimeout(() => { b.disabled = false; }, 60000);
+  };
   window.scrollTo(0, 0);
 }
 
@@ -58,7 +67,8 @@ async function verifyFromLink(token) {
   const keep = c.innerHTML; c.innerHTML = '<p class="sub">… جارٍ تأكيد بريدك</p>';
   const { data, error } = await db.functions.invoke("signup", { body: { verify: token } });
   const e = error || data?.error;
-  if (e) { c.innerHTML = `<h1 style="font-size:20px">تعذّر التأكيد</h1><p class="sub">${esc(typeof e === "string" ? e : (data?.error || "الرابط غير صالح أو منتهي"))}</p><p><a class="link" href="./signup.html">سجّل من جديد</a></p>`; return; }
+  if (e) { const t = typeof e === "string" ? e : (data?.error || await fnError(e) || "الرابط غير صالح أو منتهي");
+    c.innerHTML = `<h1 style="font-size:20px">تعذّر التأكيد</h1><p class="sub">${esc(MQ.arText(t))}</p><p class="muted">إن انتهت صلاحية الرابط: اكتب بريدك في صفحة <a class="link" href="./index.html">تسجيل الدخول</a> واضغط «أعد إرسال رابط التأكيد».</p>`; return; }
   c.innerHTML = keep;
   history.replaceState(null, "", "./signup.html");
   showDone(data);
@@ -70,12 +80,14 @@ function showDone(data) {
   document.getElementById("trialLine").textContent = "فترتك التجريبية سارية حتى " + data.trialUntil + ".";
   document.getElementById("acctLine").innerHTML = data.account
     ? `4. ادخل <a class="link" href="./index.html">لوحة المدرسة</a> ببريدك وكلمة المرور التي اخترتها.`
-    : `4. لإنشاء حساب لوحة المدرسة تواصل مع مزوّد الخدمة.`;
+    : `4. هذا البريد له حساب سابق: ادخل <a class="link" href="./index.html">لوحة المدرسة</a> بكلمة مرورك الحالية، أو اختر «نسيت كلمة المرور؟» في صفحة الدخول لتعيين كلمة جديدة.`;
   window.scrollTo(0, 0);
 }
 const _verify = new URLSearchParams(location.search).get("verify");
 if (_verify) verifyFromLink(_verify);
 
+// supabase-js wraps non-2xx bodies; pull the Arabic {error} out of the response.
+async function fnError(e) { try { const j = await e.context.json(); return j && j.error; } catch (_) { return null; } }
 function val(id) { return document.getElementById(id).value.trim(); }
 function err(t) { const m = document.getElementById("msg"); m.textContent = t; m.className = "msg err"; }
 

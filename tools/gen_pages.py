@@ -6,7 +6,7 @@ import sys, pathlib
 OUT = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else ".")
 UPDATED = "2026/11/10"
 VERSION = "2026-11"
-WA = "966541301200"
+WA = "966535313495"   # company WhatsApp (never the owner mobile) — tools/test_ui.mjs enforces it
 MAIL = "sales@wajhatnuzum.com"
 
 LOGO = ('<svg viewBox="0 0 128 128" width="64%" height="64%" aria-hidden="true"><g fill="#fff"><circle cx="64" cy="23.5" r="5.5"/>'
