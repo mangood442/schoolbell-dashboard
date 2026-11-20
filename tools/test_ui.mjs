@@ -107,6 +107,7 @@ for (const h of files.filter(f => f.endsWith(".html"))) {
   const dup = Object.entries(seen).filter(([, v]) => v.length > 1);
   ok(dup.length === 0, `${h}: top-level name declared twice across scripts: ${dup.map(([k, v]) => k + " (" + v.join(", ") + ")").join("; ")}`);
 }
+ok(/\[hidden\]\s*\{\s*display:\s*none\s*!important/.test(read("common.css")), "common.css: [hidden] must win over display classes (role banner)");
 ok(!/Disallow: \/admin\.html/.test(read("robots.txt")), "robots.txt must not advertise admin.html");
 ok(/required/.test(read("signup.html").match(/id="password"[^>]*/)[0]), "signup password required");
 
