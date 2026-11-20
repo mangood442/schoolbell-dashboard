@@ -911,7 +911,7 @@ async function saveProfile() {
 async function changePassword() {
   const p1 = document.getElementById("accPw1").value, p2 = document.getElementById("accPw2").value;
   const msg = document.getElementById("accMsg");
-  if (p1.length < 6) { msg.textContent = "كلمة المرور 6 أحرف على الأقل."; return; }
+  if (p1.length < 8) { msg.textContent = "كلمة المرور 8 أحرف على الأقل."; return; }
   if (p1 !== p2) { msg.textContent = "كلمتا المرور غير متطابقتين."; return; }
   const { error } = await db.auth.updateUser({ password: p1 });
   if (error) { msg.textContent = "فشل: " + MQ.err(error); return; }

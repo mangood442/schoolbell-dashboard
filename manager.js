@@ -177,7 +177,7 @@ function renderAccount() {
     <button class="btn-primary" data-onclick="h16">حفظ البيانات</button>
     <hr style="border:none;border-top:1px solid var(--line);margin:4px 0">
     <h2 style="margin:0;font-size:16px">تغيير كلمة المرور</h2>
-    <input id="accPw1" type="password" dir="ltr" placeholder="كلمة مرور جديدة (6 أحرف على الأقل)">
+    <input id="accPw1" type="password" dir="ltr" placeholder="كلمة مرور جديدة (8 أحرف على الأقل)">
     <input id="accPw2" type="password" dir="ltr" placeholder="تأكيد كلمة المرور">
     <button class="btn-primary" data-onclick="h17">تحديث كلمة المرور</button>
     <p class="muted" id="accMsg"></p>
@@ -198,7 +198,7 @@ async function saveProfile() {
 async function changePassword() {
   const p1 = document.getElementById("accPw1").value, p2 = document.getElementById("accPw2").value;
   const msg = document.getElementById("accMsg");
-  if (p1.length < 6) { msg.textContent = "كلمة المرور 6 أحرف على الأقل."; return; }
+  if (p1.length < 8) { msg.textContent = "كلمة المرور 8 أحرف على الأقل."; return; }
   if (p1 !== p2) { msg.textContent = "كلمتا المرور غير متطابقتين."; return; }
   const { error } = await db.auth.updateUser({ password: p1 });
   msg.textContent = error ? "فشل: " + MQ.err(error) : "✓ تم تحديث كلمة المرور.";

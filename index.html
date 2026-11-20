@@ -162,7 +162,7 @@
     .kpis { grid-template-columns:1fr 1fr; }
   }
 </style>
-<link rel="stylesheet" href="common.css?v=18">
+<link rel="stylesheet" href="common.css?v=19">
 </head>
 <body>
 
@@ -329,7 +329,7 @@
     <!-- Smart devices (Tuya) -->
     <section id="tab-smart" class="card" style="display:none">
       <div class="row" style="margin-bottom:6px"><h2 style="flex:1">الأجهزة الذكية (تويا)</h2>
-        <label class="muted">تصفية بالقسم</label><select id="tuyaFilter" data-onchange="h21" style="min-width:150px"></select>
+        <label class="muted" for="tuyaFilter">تصفية بالقسم</label><select id="tuyaFilter" data-onchange="h21" style="min-width:150px"></select>
         <button class="ghost" data-onclick="h22">+ إضافة جهاز</button>
       </div>
       <p class="muted" style="margin-top:-4px">تحكّم بالإنارة والستائر عبر التابلت على شبكة المدرسة. أدخل معرّف الجهاز والمفتاح المحلي مرة واحدة (من مشروع Tuya IoT). التحكم فوري عبر التابلت.</p>
@@ -397,16 +397,16 @@
       <div id="accountBox" style="display:flex;flex-direction:column;gap:14px;max-width:520px">
         <div class="row"><label class="muted" style="width:130px">البريد</label><span id="accEmail" class="mono"></span></div>
         <div class="row"><label class="muted" style="width:130px">الدور</label><span id="accRole"></span></div>
-        <div class="row"><label class="muted" style="width:130px">الاسم الكامل</label>
+        <div class="row"><label for="accName" class="muted" style="width:130px">الاسم الكامل</label>
           <input id="accName" style="flex:1;min-width:200px" placeholder="اسمك الكامل"></div>
-        <div class="row"><label class="muted" style="width:130px">رقم الجوال</label>
+        <div class="row"><label for="accPhone" class="muted" style="width:130px">رقم الجوال</label>
           <input id="accPhone" dir="ltr" style="flex:1;min-width:200px" placeholder="05xxxxxxxx"></div>
         <div class="row"><span style="width:130px"></span><button class="primary" data-onclick="h24"><i data-ic=save></i> حفظ البيانات</button></div>
         <hr style="border:none;border-top:1px solid var(--line);margin:6px 0">
         <h2 style="font-size:16px">تغيير كلمة المرور</h2>
-        <div class="row"><label class="muted" style="width:130px">كلمة مرور جديدة</label>
-          <input id="accPw1" type="password" dir="ltr" style="flex:1;min-width:200px" placeholder="6 أحرف على الأقل"></div>
-        <div class="row"><label class="muted" style="width:130px">تأكيد</label>
+        <div class="row"><label for="accPw1" class="muted" style="width:130px">كلمة مرور جديدة</label>
+          <input id="accPw1" type="password" dir="ltr" style="flex:1;min-width:200px" placeholder="8 أحرف على الأقل"></div>
+        <div class="row"><label for="accPw2" class="muted" style="width:130px">تأكيد</label>
           <input id="accPw2" type="password" dir="ltr" style="flex:1;min-width:200px" placeholder="أعد كتابتها"></div>
         <div class="row"><span style="width:130px"></span><button class="primary" data-onclick="h25"><i data-ic=key></i> تحديث كلمة المرور</button></div>
         <p class="muted" id="accMsg"></p>
@@ -420,9 +420,9 @@
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js" integrity="sha384-2zrRDgDHSYB/GN3nFW3fsZXoxEhKIr3N2h63Tc6DEOB9JJdFIu8xMJT2Cph/gBil" crossorigin="anonymous"></script>
-<script src="common.js?v=18"></script>
-<script src="index.js?v=18"></script>
-<script src="pickup-admin.js?v=18"></script>
-<script src="onboarding.js?v=18"></script>
+<script src="common.js?v=19"></script>
+<script src="index.js?v=19"></script>
+<script src="pickup-admin.js?v=19"></script>
+<script src="onboarding.js?v=19"></script>
 </body>
 </html>
