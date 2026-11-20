@@ -1,3 +1,4 @@
+[hidden] { display: none !important; } /* a class with display:flex must never un-hide a [hidden] element (roBanner showed for admins) */
 /* common.css — shared by every Meeqat panel (UX audit 2026-11-19) */
 svg.ic { width: 1.05em; height: 1.05em; vertical-align: -0.16em; flex: none; }
 button svg.ic, a svg.ic { margin-inline-end: 2px; }

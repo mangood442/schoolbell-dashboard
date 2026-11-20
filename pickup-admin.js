@@ -8,7 +8,7 @@ const WEEKDAYS = ["الأحد", "الاثنين", "الثلاثاء", "الأر�
 const RELATIONS = { parent: "وليّ أمر", authorized: "مفوَّض" };
 
 let students = [], stuFilter = "", importRows = [], pickupSettings = null;
-const canWrite = () => myRole === "admin" || myRole === "manager";
+// canWrite() comes from index.js (shared globals; a second `const` here broke the whole file — 2026-11-20)
 const sectionsWithId = () => (config.sections || []).filter(s => s.id);
 const sectionName = id => (sectionsWithId().find(s => s.id === id) || {}).name || "كل المدرسة";
 

@@ -97,6 +97,17 @@ for (const p of panels) for (const ext of ["html", "js"]) {
     ok(/common\.js/.test(s), `${f}: loads common.js`);
   }
 }
+// Shared-globals collision: every classic <script> of a page shares one global scope, so a
+// top-level const/let/class declared in two of them throws «already been declared» and the
+// whole later file is dropped (2026-11-20: canWrite in index.js + pickup-admin.js).
+for (const h of files.filter(f => f.endsWith(".html"))) {
+  const srcs = [...read(h).matchAll(/<script src="([a-z0-9-]+\.js)/g)].map(m => m[1]).filter(f => fs.existsSync(path.join(ROOT, f)));
+  const seen = {};
+  for (const f of srcs) for (const m of read(f).matchAll(/^(?:const|let|class)\s+([A-Za-z_$][\w$]*)/gm)) (seen[m[1]] ||= []).push(f);
+  const dup = Object.entries(seen).filter(([, v]) => v.length > 1);
+  ok(dup.length === 0, `${h}: top-level name declared twice across scripts: ${dup.map(([k, v]) => k + " (" + v.join(", ") + ")").join("; ")}`);
+}
+ok(/\[hidden\]\s*\{\s*display:\s*none\s*!important/.test(read("common.css")), "common.css: [hidden] must win over display classes (role banner)");
 ok(!/Disallow: \/admin\.html/.test(read("robots.txt")), "robots.txt must not advertise admin.html");
 ok(/required/.test(read("signup.html").match(/id="password"[^>]*/)[0]), "signup password required");
 
